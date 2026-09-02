@@ -2,122 +2,158 @@
 
 Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
-The project started as a QA / convenience tool for managing large PC boxes and is currently a standalone client-side prototype. It uses Worlddex's existing frontend data and API endpoints; it is **not integrated into the official game**.
+It adds a floating PC-management panel that helps you clean duplicates, track breeding and Pokédex needs, and organize large boxes without changing how Worlddex itself works.
 
-## Current version
+> **Current version: v1.15**
 
-**v1.11.1**
+## What it can do
 
-## Features
+### Clean Up
 
-- **Cleaner**
-  - Living-Dex retention
-  - Hard protection for nicknamed Pokémon
-  - Hard protection for Pokémon with IVs >= 70%
-  - Protection for favourites, held items, EV-trained Pokémon and other configured safety cases
-  - Reviewed, sequential release flow with local safety interlocks and rate-limit handling
+Reviews your PC and suggests duplicate Pokémon that may be safe to remove.
 
-- **Synchronize management**
-  - Keeps useful Synchronize Pokémon by nature
-  - Redundant copies can be cleaned when they are not otherwise protected
+The cleaner protects important copies, including:
 
-- **Breeding setup**
-  - `BREED NOW`
-  - `TO-BE`
-  - `DONE`
-  - `NO BREED`
-  - `KEEP ALL`
-  - Per-family retention and box policies
+- nicknamed Pokémon;
+- Pokémon with 70%+ IVs;
+- favourites;
+- trained Pokémon;
+- Pokémon holding items;
+- useful Synchronize Pokémon;
+- Pokémon needed for breeding plans;
+- Pokémon needed to complete your Pokédex;
+- rare or hard-to-replace Pokémon covered by the Special Pokémon rules.
 
-- **Dex tasks**
-  - `EVOLVE`: preserves one eligible source Pokémon
-  - `BREED`: preserves a compatible female + male pair when possible
-  - Sex-restricted evolution requirements are respected when exposed by the game data
+Nothing is released automatically. You review the list and confirm before anything is removed.
 
-- **Specials / no-eggs**
-  - Explicit per-species retention controls
-  - `AUTO`, `KEEP BEST 1`, `KEEP BEST 2`, `KEEP ALL`
-  - Conservative defaults for risky non-breedable species
+### Special Pokémon
 
-- **Organizer**
-  - Functional categories such as Syncro, Dex Tasks, Specials, breeding projects, finals and storage
-  - Dedicated family boxes when appropriate
-  - Stable max-overlap placement to minimize repeat moves
-  - 99/100 safe-capacity planning
-  - `box_full` recovery
-  - HTTP 429 backoff / retry
-  - Box renaming
-  - Single-family boxes use clean Pokémon/family names only
+Lets you decide how many copies to keep for Pokémon that are difficult or impossible to replace through normal breeding.
 
-- **UI**
-  - One floating draggable panel
-  - Persistent navigation:
-    `Cleaner | Specials | Dex tasks | Breeding setup | Organizer`
-  - Minimize / restore
-  - Position persistence
-  - Reload keeps the active section
+Available choices include keeping the best 1, best 2, or every copy. Other safety rules still take priority.
+
+### Pokédex Tasks
+
+Shows Pokémon that you still need to obtain through breeding or evolution.
+
+- **EVOLVE** keeps one suitable Pokémon for the missing evolution.
+- **BREED** keeps a compatible female + male pair when possible.
+
+Completed tasks disappear after you reload the manager.
+
+### Breeding Plans
+
+Lets you mark evolution families as:
+
+- `BREED NOW`
+- `TO-BE`
+- `DONE`
+- `NO BREED`
+- `KEEP ALL`
+
+These choices help the cleaner know which breeding stock still matters.
+
+Breeding Plans can also be used by the Organizer, or ignored entirely if you only care about keeping the Pokémon safe and do not want breeding-specific boxes.
+
+### Organize Boxes
+
+Builds a preview before moving anything.
+
+You can choose whether to keep these groups together:
+
+- Battle Ready / trained Pokémon;
+- breeding projects;
+- Synchronize Pokémon;
+- Pokédex Tasks;
+- Special Pokémon.
+
+You can also:
+
+- keep favourites in their current boxes;
+- turn automatic box renaming on or off;
+- choose the level threshold used for Battle Ready Pokémon;
+- choose how strongly the manager should preserve your current layout;
+- customize the order of the sections that actually exist in your current setup.
+
+The Organizer never releases Pokémon. It only moves them between boxes and optionally renames boxes.
+
+## Organization styles
+
+### Minimal
+
+Keeps the number of separate functional groups low.
+
+### Recommended
+
+A balanced default for most players.
+
+### Functional
+
+Separates more useful groups, such as Synchronize, Pokédex Tasks and breeding projects.
+
+You can change any option after selecting a preset.
+
+## Layout priority
+
+All modes use the section order you choose in **Customize box order**.
+
+- **Balanced** keeps that order while allowing gaps when they save unnecessary moves.
+- **Keep boxes ordered** follows the chosen order as tightly as possible from the earliest boxes.
+- **Minimize moves** treats your chosen order as a preference and may bend it when that avoids extra moves.
+
+The order editor only shows sections that are actually present in the current preview. If your setup only creates four groups, you only need to order those four groups.
+
+## Interface
+
+The manager uses one floating window with these sections:
+
+`Clean Up | Special Pokémon | Pokédex Tasks | Breeding Plans | Organize Boxes`
+
+The window can be:
+
+- dragged around the page;
+- minimized;
+- enlarged by dragging the bottom-right corner;
+- reloaded without losing the current section;
+- configured with preferences that are remembered locally.
 
 ## How to use
 
-At the moment this is still the standalone prototype.
+The current community version is still a standalone browser script.
 
 1. Open Worlddex and log in.
-2. Open the browser DevTools Console.
-3. Copy the full contents of [`box-manager.js`](./box-manager.js).
-4. Paste and run it.
-5. The Box Manager overlay will appear.
+2. Open your browser's Developer Tools and select **Console**.
+3. Open [`box-manager.js`](./box-manager.js) on GitHub and copy the full file.
+4. Paste it into the Worlddex console and run it.
+5. The Box Manager window will appear.
 
-The tool operates on the currently logged-in Worlddex session.
+If your PC changes while the manager is open, use **Reload** before doing a large cleanup or organization run.
 
 ## Safety
 
-The cleaner intentionally uses multiple local safeguards before destructive release operations.
+This tool can perform permanent releases, so the Cleaner is intentionally conservative.
 
-Important protections include:
+- Cleanup is previewed before release.
+- Nothing is released automatically.
+- Protected Pokémon are checked again during the release process.
+- Releases happen one at a time.
+- The process stops if something unexpected happens.
+- If Worlddex asks the tool to slow down, it waits and continues rather than blindly sending more actions.
 
-- release candidates are recalculated from live box data;
-- protected cores are checked before the batch;
-- the protection interlock is checked again immediately before every release request;
-- releases are sequential;
-- unexpected responses stop the batch;
-- HTTP 429 responses pause and retry instead of blindly continuing.
+The **Organizer never releases Pokémon**.
 
-The Organizer **does not release Pokémon**. It only moves Pokémon between boxes and renames boxes.
-
-Even with these safeguards, this is an unofficial prototype. Review Cleaner candidates before releasing anything.
-
-## Organizer design
-
-The Organizer does not simply assign logical groups to Box 1, Box 2, Box 3, etc.
-
-It uses a stable max-overlap assignment so that, when the PC is already mostly organized, logical groups are mapped back to the physical boxes that already contain the largest number of their Pokémon. This avoids re-moving hundreds of Pokémon after a small box change.
-
-Worlddex's current move endpoint reports a maximum capacity of 100 Pokémon per box. The Organizer deliberately plans at 99 to retain one temporary safety slot.
-
-## Native integration
-
-The current source can also be used as a reference implementation for a future native Worlddex PC feature.
-
-For native integration, the main cleanup would be:
-
-- remove console/IIFE bootstrap code;
-- move the UI into the game's normal frontend structure;
-- replace injected CSS with native styles/components;
-- use game modules directly instead of compatibility fallbacks;
-- optionally replace sequential Organizer moves with a server-side batch operation.
-
-Most Box Manager rules and workflow logic are already contained in `box-manager.js`.
-
-## Verification
-
-The committed `box-manager.js` is checked in GitHub Actions with `node --check` and an exact SHA-256 comparison for the current release.
-
-Current v1.11.1 SHA-256:
-
-`67f9d7288b3042d30db529b716970c77c773e94e52da84fba5f2dc10f932aab7`
+Even with these safeguards, this is an unofficial community tool. Review the cleanup list before confirming permanent releases.
 
 ## Status
 
-Actively prototyped and tested against the current Worlddex frontend/API.
+Actively prototyped and tested against the current Worlddex PC.
 
-Breaking changes in Worlddex can require updates to this tool.
+Worlddex updates can require changes to this tool.
+
+## Verification
+
+The repository verifies `box-manager.js` with a JavaScript syntax check and an exact SHA-256 check.
+
+Current v1.15 SHA-256:
+
+`73b1ebb970ae70fe19d2bdab85b95f51b4430cd204a204cc5b9577ce405c8aae`
