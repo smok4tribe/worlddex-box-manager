@@ -39,3 +39,5 @@ jobs:
           git add box-manager.js
           git commit -m "Build Box Manager v1.11.1"
           git push
+
+# Payload uploaded in six chunks; checksum above guards reconstruction.
