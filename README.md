@@ -108,6 +108,14 @@ For native integration, the main cleanup would be:
 
 Most Box Manager rules and workflow logic are already contained in `box-manager.js`.
 
+## Verification
+
+The committed `box-manager.js` is checked in GitHub Actions with `node --check` and an exact SHA-256 comparison for the current release.
+
+Current v1.11.1 SHA-256:
+
+`67f9d7288b3042d30db529b716970c77c773e94e52da84fba5f2dc10f932aab7`
+
 ## Status
 
 Actively prototyped and tested against the current Worlddex frontend/API.
