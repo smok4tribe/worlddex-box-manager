@@ -189,7 +189,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.11.1 — BREEDING DECISIONS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.15 — BREEDING DECISIONS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -569,7 +569,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.11.1
+      // FAMILY / BREEDING DECISIONS v1.15
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1298,7 +1298,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.11.1 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.15 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1350,7 +1350,7 @@
         return [cols.join('\t'), ...list.map(r => cols.map(c => clean(r[c])).join('\t'))].join('\n');
       }
 
-      function download(list = rows, filename = 'worlddex_box_manager_v1_11_1_analysis.tsv') {
+      function download(list = rows, filename = 'worlddex_box_manager_v1_15_analysis.tsv') {
         const blob = new Blob([toTSV(list)], { type:'text/tab-separated-values;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -1458,11 +1458,11 @@
       const MANAGER_SHELL_POSITION_KEY = 'worlddex.boxManager.v1.10.shellPosition';
 
       const MANAGER_VIEW_META = {
-        cleaner:   { label:'Cleaner', mount:() => mountReviewPanel() },
-        specials:  { label:'Specials', mount:() => mountSpecialPanel() },
-        dex:       { label:'Dex tasks', mount:() => mountDexTaskPanel() },
-        breeding:  { label:'Breeding setup', mount:() => mountFamilyDecisionPanel() },
-        organizer: { label:'Organizer', mount:() => mountOrganizerPanel() }
+        cleaner:   { label:'Clean Up', mount:() => mountReviewPanel() },
+        specials:  { label:'Special Pokémon', mount:() => mountSpecialPanel() },
+        dex:       { label:'Pokédex Tasks', mount:() => mountDexTaskPanel() },
+        breeding:  { label:'Breeding Plans', mount:() => mountFamilyDecisionPanel() },
+        organizer: { label:'Organize Boxes', mount:() => mountOrganizerPanel() }
       };
 
       const MANAGER_VIEW_PANEL_IDS = [
@@ -1500,9 +1500,9 @@
         const specialsBtn = shell.querySelector('[data-manager-view="specials"]');
         const dexBtn = shell.querySelector('[data-manager-view="dex"]');
 
-        if (cleanerBtn) cleanerBtn.textContent = `Cleaner (${candidateN})`;
-        if (specialsBtn) specialsBtn.textContent = `Specials (${specialN})`;
-        if (dexBtn) dexBtn.textContent = `Dex tasks (${dexN})`;
+        if (cleanerBtn) cleanerBtn.textContent = `Clean Up (${candidateN})`;
+        if (specialsBtn) specialsBtn.textContent = `Special Pokémon (${specialN})`;
+        if (dexBtn) dexBtn.textContent = `Pokédex Tasks (${dexN})`;
       }
 
       function managerSetActiveView(view) {
@@ -1554,8 +1554,15 @@
             bottom:16px;
             width:min(1180px, calc(100vw - 32px));
             height:min(82vh, 860px);
-            max-height:min(82vh, 860px);
-            min-height:380px;
+
+            /* Start exactly as before, but allow the manager to grow.
+               The normal starting size is also the minimum desktop size. */
+            min-width:min(1180px, calc(100vw - 32px));
+            min-height:min(82vh, 860px);
+            max-width:calc(100vw - 12px);
+            max-height:calc(100vh - 12px);
+            resize:both;
+
             display:flex;
             flex-direction:column;
             overflow:hidden;
@@ -1567,10 +1574,24 @@
             font:13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;
           }
           #wd-manager-shell-v110 * { box-sizing:border-box; }
+          #wd-manager-shell-v110::after {
+            content:'↘';
+            position:absolute;
+            right:4px;
+            bottom:1px;
+            z-index:20;
+            color:#64758b;
+            font-size:12px;
+            line-height:1;
+            pointer-events:none;
+            opacity:.8;
+          }
+          #wd-manager-shell-v110.wdm-minimized::after { display:none; }
           #wd-manager-shell-v110.wdm-minimized {
             height:auto !important;
             max-height:none !important;
             min-height:0 !important;
+            resize:none !important;
           }
           #wd-manager-shell-v110.wdm-minimized #wd-manager-view-slot {
             display:none !important;
@@ -1663,7 +1684,11 @@
               bottom:6px;
               width:calc(100vw - 12px);
               height:90vh;
+              min-width:calc(100vw - 12px);
+              min-height:90vh;
+              max-width:calc(100vw - 12px);
               max-height:90vh;
+              resize:none;
             }
             #wd-manager-shell-v110 .wdm-head {
               flex-wrap:wrap;
@@ -1677,21 +1702,22 @@
 
         shell = document.createElement('div');
         shell.id = 'wd-manager-shell-v110';
+        shell.title = 'Drag the top bar to move · drag the bottom-right corner to resize';
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.11.1</b>
-              <small id="wd-manager-current-view">Cleaner</small>
+              <b>Worlddex Box Manager v1.15</b>
+              <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
-              <button data-manager-view="cleaner">Cleaner</button>
-              <button data-manager-view="specials">Specials</button>
-              <button data-manager-view="dex">Dex tasks</button>
-              <button data-manager-view="breeding">Breeding setup</button>
-              <button data-manager-view="organizer">Organizer</button>
+              <button data-manager-view="cleaner">Clean Up</button>
+              <button data-manager-view="specials">Special Pokémon</button>
+              <button data-manager-view="dex">Pokédex Tasks</button>
+              <button data-manager-view="breeding">Breeding Plans</button>
+              <button data-manager-view="organizer">Organize Boxes</button>
             </div>
             <div class="wdm-spacer"></div>
-            <button id="wd-manager-refresh" title="Refetch live box/state/nursery data and stay on this section">Reload</button>
+            <button id="wd-manager-refresh" title="Check your current PC again and refresh this section">Reload</button>
             <button id="wd-manager-minimize">Minimize</button>
             <button id="wd-manager-close">×</button>
           </div>
@@ -1829,10 +1855,18 @@
         `;
         document.head.appendChild(style);
         const panel=document.createElement('div');panel.id='wd-family-decisions-v15';
-        panel.innerHTML=`<div class="wdf-head"><div><b>Breeding Decisions v1.11.1</b><small style="display:block;color:#9ba9bc">Decide line by line what deserves breeding protection.</small></div><div class="sp"></div><button id="wd-family-specials">Specials</button><button id="wd-family-dex">Dex tasks</button><button id="wd-family-refresh">Reload data</button><button id="wd-family-back">Back</button><button id="wd-family-close">×</button></div>
-          <div class="wdf-note"><b>AUTO</b> is the normal collection mode. <b>Copies</b> lets you override a line to KEEP BEST 1, KEEP BEST 2 or KEEP ALL. Nicknamed Pokémon are locked and never become release candidates. <b>IV 70%+</b> Pokémon are also absolute KEEP regardless of breeding mode, Copies policy, species, sex or no-eggs status. For <b>no-eggs / special</b> species, use the separate <b>Specials</b> panel: AUTO safely keeps every copy, while BEST 1 / BEST 2 applies only to that exact species/form. <b>BREED NOW</b> and <b>TO-BE</b> are the only modes that preserve breeding cores / egg-group donors. <b>DONE</b> and <b>NO BREED</b> clean to the living-collection floor and are <b>not Organizer categories</b>: surviving Synchronize Pokémon go to SYNCRO, final evolutions to FINAL, and ordinary survivors to STORAGE. <b>KEEP ALL</b> never cleans that line. Dex-completion breeding/evolution is deliberately shown in <b>Dex tasks</b>, not mixed into your personal breeding choices. Box policy: <b>AUTO</b> gives private boxes only where the 32-box budget allows, <b>OWN BOX</b> forces a private evolution-family box, <b>CAN MIX</b> allows that family to share a box.</div>
-          <div class="wdf-tools"><input id="wd-family-filter" type="search" placeholder="Filter family/species…"><span>Shown <b id="wd-family-shown">0</b></span><button id="wd-family-reset">Reset visible defaults</button></div>
-          <div class="wdf-wrap"><table><thead><tr><th>Evolution family</th><th>Owned</th><th>Breeding status</th><th>Copies</th><th>Box policy</th><th>Cleaner candidates</th><th>Kept / why</th></tr></thead><tbody id="wd-family-tbody"></tbody></table></div>`;
+        panel.innerHTML=`<div class="wdf-head"><div><b>Breeding Plans</b><small style="display:block;color:#9ba9bc">Tell the manager which Pokémon families you still want to breed.</small></div><div class="sp"></div><button id="wd-family-specials">Special Pokémon</button><button id="wd-family-dex">Pokédex Tasks</button><button id="wd-family-refresh">Reload</button><button id="wd-family-back">Back</button><button id="wd-family-close">×</button></div>
+          <div class="wdf-note">
+            Use this page to tell the cleaner which evolution lines you are still working on.
+            <b>BREED NOW</b> means you are actively breeding that line; <b>TO-BE</b> means you want to breed it later.
+            <b>DONE</b> means the project is finished, while <b>NO BREED</b> means you only want a clean collection copy.
+            <b>KEEP ALL</b> prevents cleanup for that line.
+            Pokémon with a nickname or at least <b>70% IVs</b> are always kept.
+            Pokédex completion is handled separately in <b>Pokédex Tasks</b>, so you can immediately see what still needs breeding or evolving.
+            <b>Box policy</b> only affects organization: AUTO chooses for you, OWN BOX forces a dedicated family box, and CAN MIX allows the family to share.
+          </div>
+          <div class="wdf-tools"><input id="wd-family-filter" type="search" placeholder="Filter family/species…"><span>Shown <b id="wd-family-shown">0</b></span><button id="wd-family-reset">Reset shown families</button></div>
+          <div class="wdf-wrap"><table><thead><tr><th>Evolution family</th><th>Owned</th><th>Your plan</th><th>Copies</th><th>Box policy</th><th>Can be removed</th><th>Kept because</th></tr></thead><tbody id="wd-family-tbody"></tbody></table></div>`;
         managerAttachView(panel, '.wdf-head');
         document.getElementById('wd-family-filter').addEventListener('input',renderFamilyDecisionRows);
         document.getElementById('wd-family-specials').addEventListener('click',mountSpecialPanel);
@@ -1891,6 +1925,17 @@
         return n;
       }
 
+      function friendlyProtectionReason(reason) {
+        const r=String(reason||''); if(!r) return '';
+        if(r.startsWith('HIGH_IV_')) return 'High IVs'; if(r.startsWith('SYNCRO_CORE_') || r==='SYNCRO_CORE') return 'Useful Synchronize nature';
+        if(r.includes('NICKNAME')) return 'Nicknamed'; if(r.includes('FAVOURITE')) return 'Favourite'; if(r.includes('SHINY')) return 'Shiny';
+        if(r.includes('SHADOW')) return 'Shadow'; if(r.includes('RAINBOW')) return 'Rainbow'; if(r.includes('EV_TRAINED')) return 'Trained Pokémon';
+        if(r.includes('HELD_ITEM')) return 'Holding an item'; if(r.includes('HIGH_FRIENDSHIP')) return 'High friendship';
+        if(r.includes('DEX_') || r.includes('EVOLVE') || r.includes('BREED_PARENT')) return 'Needed for Pokédex';
+        if(r.includes('BREED') || r.includes('EGG_') || r.includes('CORE_')) return 'Needed for breeding / collection'; if(r.includes('BEST')) return 'Best copy kept';
+        return r.replaceAll('_',' ').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+      }
+
       function updatePanelCounts() {
         const c = document.getElementById('wd-cleaner-candidate-count');
         const s = document.getElementById('wd-cleaner-selected-count');
@@ -1900,6 +1945,12 @@
         if (s) s.textContent = String(selectedCount());
         if (r) r.textContent = String(releasedIds.size);
         if (e) e.textContent = String(releaseErrors.size);
+        const activeCount=mons.filter(m=>!releasedIds.has(Number(m.id))).length;
+        const previewTotal=document.getElementById('wd-clean-preview-total'), previewKeep=document.getElementById('wd-clean-preview-keep'), previewCandidates=document.getElementById('wd-clean-preview-candidates');
+        if(previewTotal) previewTotal.textContent=String(activeCount);
+        const liveCandidateCount=candidates.filter(r=>!releasedIds.has(Number(r.ID))).length;
+        if(previewKeep) previewKeep.textContent=String(Math.max(0,activeCount-liveCandidateCount));
+        if(previewCandidates) previewCandidates.textContent=String(liveCandidateCount);
         managerUpdateNav?.();
 
         const btn = document.getElementById('wd-cleaner-release-btn');
@@ -1965,8 +2016,8 @@
                 <small>${r.Perfect ? `${escHtml(r.Perfect)}×31 · ${escHtml(r.PerfectMask)}` : '0×31'}</small>
               </td>
               <td>
-                <span>${escHtml(r.Reason)}</span>
-                <small>${escHtml(r.DominatedBy || '—')}</small>
+                <span title="${escAttr(r.Reason)}">${escHtml(friendlyProtectionReason(r.Reason))}</span>
+                <small>${escHtml(r.DominatedBy ? `Better copy: ${r.DominatedBy}` : 'Duplicate no longer needed')}</small>
               </td>
               <td><span class="wdcl-state wdcl-state-${stateClass}">${state}</span></td>
             </tr>
@@ -2002,7 +2053,7 @@
           const live = liveMap.get(id);
 
           if (!row) {
-            problems.push(`#${id}: no longer in candidate snapshot`);
+            problems.push(`#${id}: no longer in the current cleanup list`);
             continue;
           }
 
@@ -2196,7 +2247,7 @@
 
             const seconds = Math.ceil(waitMs / 1000);
             logPanel(
-              `RATE LIMIT on #${id} ${row?.Pokemon || ''}. Pausing ${seconds}s, then retrying the SAME Pokémon (${attempt + 1}/${max429Retries})…`,
+              `Worlddex is busy. Waiting ${seconds}s before continuing with #${id} ${row?.Pokemon || ''}…`,
               'warn'
             );
 
@@ -2235,20 +2286,20 @@
           }
 
           if (interlockProblems.length) {
-            logPanel(`ABORTED: local safety interlock blocked ${interlockProblems.length} selected Pokémon.`, 'error');
+            logPanel(`Stopped: ${interlockProblems.length} selected Pokémon are protected.`, 'error');
             console.error('BOX CLEANER LOCAL INTERLOCK FAILED:', interlockProblems);
             alert(
-              'Release aborted BEFORE any server release call.\n\n' +
-              'One or more selected Pokémon is protected by the current analysis:\n\n' +
+              'Release cancelled before anything was removed.\n\n' +
+              'One or more selected Pokémon is protected:\n\n' +
               interlockProblems.slice(0, 10).join('\n') +
               (interlockProblems.length > 10 ? `\n… +${interlockProblems.length - 10} more` : '') +
-              '\n\nPress Reload data before trying again.'
+              '\n\nPress Reload before trying again.'
             );
             return;
           }
 
-          logPanel(`Local safety interlock passed for ${ids.length} Pokémon.`, 'ok');
-          logPanel(`Re-validating ${ids.length} selected Pokémon against live /api/box…`, 'info');
+          logPanel(`Safety check passed for ${ids.length} Pokémon.`, 'ok');
+          logPanel(`Checking the ${ids.length} selected Pokémon one more time…`, 'info');
           const check = await validateSelectedLive(ids);
 
           if (check.problems.length) {
@@ -2266,7 +2317,7 @@
           const phrase = `RELEASE ${ids.length}`;
           const typed = prompt(
             `You are about to permanently release ${ids.length} Pokémon.\n\n` +
-            `They passed the local protection interlock and were re-validated against the current live box.\n` +
+            `They have been checked again and are still safe to remove.\n` +
             `Type exactly:\n\n${phrase}\n\n` +
             `Anything else cancels.`
           );
@@ -2278,7 +2329,7 @@
 
           if (!confirm(
             `FINAL CONFIRMATION\n\nPermanently release ${ids.length} selected Pokémon?\n\n` +
-            `The script will release them ONE AT A TIME. Immediately before EACH irreversible request it re-checks the local protection interlock. HTTP 429 rate limits pause and retry the same Pokémon automatically; every other unexpected response still stops the batch immediately.`
+            `They will be removed one at a time. If Worlddex is busy or anything unexpected changes, the cleanup pauses or stops instead of continuing blindly.`
           )) {
             logPanel('Release cancelled at final confirmation.', 'warn');
             return;
@@ -2324,7 +2375,7 @@
             logPanel(`WARNING: ${stillThere.length} released ID(s) still appear in live box.`, 'error');
             console.error('BOX CLEANER POST-RELEASE VERIFY FAILED:', stillThere);
             alert(
-              `Release requests completed, but ${stillThere.length} ID(s) still appear in /api/box.\n` +
+              `Cleanup finished, but ${stillThere.length} Pokémon still appear in the PC.\n` +
               `Do not run another batch yet. Check console.`
             );
             return;
@@ -2338,7 +2389,7 @@
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.11.1) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.15) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -2396,7 +2447,7 @@
         const dupes = rows.filter(r => r.count > 1).length;
         ['wd-cleaner-specials','wd-organizer-specials','wd-family-specials'].forEach(id => {
           const el = document.getElementById(id);
-          if (el) el.textContent = `Specials (${dupes})`;
+          if (el) el.textContent = `Special Pokémon (${dupes})`;
         });
         managerUpdateNav?.();
       }
@@ -2438,10 +2489,10 @@
               <select data-special-retention="${escAttr(r.key)}">
                 ${opts.map(o => `<option value="${o.value}" ${r.policy===o.value?'selected':''}>${escAttr(o.label)}</option>`).join('')}
               </select>
-              <small>AUTO = KEEP ALL here</small>
+              <small>AUTO keeps every copy</small>
             </td>
             <td><b>${r.candidateCount}</b><small>${r.keptCount} kept</small></td>
-            <td>${escAttr(lockParts.join(' · ') || '—')}<small>Locks always override BEST 1/2</small></td>
+            <td>${escAttr(lockParts.join(' · ') || '—')}<small>Protected copies are kept in addition to this choice</small></td>
             <td>${escAttr(best)}</td>
           </tr>`;
         }).join('');
@@ -2490,23 +2541,25 @@
         panel.id='wd-special-manager-v18';
         panel.innerHTML=`
           <div class="wds-head">
-            <div><b>Specials / No-Eggs v1.11.1</b><small style="display:block;color:#9ba9bc">Explicitly decide duplicate retention for risky non-breedable species.</small></div>
+            <div><b>Special Pokémon</b><small style="display:block;color:#9ba9bc">Choose how many copies to keep for Pokémon that cannot normally be bred.</small></div>
             <div class="sp"></div>
-            <button id="wd-special-refresh">Reload data</button>
+            <button id="wd-special-refresh">Reload</button>
             <button id="wd-special-back">Back</button>
             <button id="wd-special-close">×</button>
           </div>
           <div class="wds-note">
-            <b>AUTO = KEEP ALL</b> for special/no-eggs species. Choose <b>KEEP BEST 1</b> or <b>KEEP BEST 2</b> only for species you explicitly want to prune, such as Iron Moth. Absolute locks still win: nickname, IV ≥70%, shiny/shadow/rainbow, favourite, EV-trained, held item, high friendship, Dex tasks, etc. So BEST 1 means “at least the best one, plus anything independently protected”.
+            By default, the manager keeps every copy here because these Pokémon are harder or impossible to replace through breeding.
+            If you have many duplicates, you can choose <b>KEEP BEST 1</b> or <b>KEEP BEST 2</b> for that species.
+            Important Pokémon are still protected even when you choose a lower number: nicknamed Pokémon, 70%+ IV Pokémon, favourites, rare variants, trained Pokémon and anything needed for your Pokédex will not be removed.
           </div>
           <div class="wds-tools">
-            <input id="wd-special-filter" type="search" placeholder="Filter special species / Dex…">
-            <label><input id="wd-special-dupes" type="checkbox" checked> duplicates only</label>
+            <input id="wd-special-filter" type="search" placeholder="Search Pokémon…">
+            <label><input id="wd-special-dupes" type="checkbox" checked> show duplicates only</label>
             <span>Shown <b id="wd-special-shown">0</b></span>
           </div>
           <div class="wds-wrap">
             <table>
-              <thead><tr><th>Species / form</th><th>Owned</th><th>Keep policy</th><th>Cleaner candidates</th><th>Hard locks</th><th>Best copy</th></tr></thead>
+              <thead><tr><th>Species / form</th><th>Owned</th><th>Keep policy</th><th>Can be removed</th><th>Hard locks</th><th>Best copy</th></tr></thead>
               <tbody id="wd-special-tbody"></tbody>
             </table>
           </div>`;
@@ -2531,7 +2584,7 @@
         const n = dexTaskCore?.tasks?.length || 0;
         ['wd-cleaner-dex','wd-organizer-dex','wd-family-dex'].forEach(id => {
           const el = document.getElementById(id);
-          if (el) el.textContent = `Dex tasks (${n})`;
+          if (el) el.textContent = `Pokédex Tasks (${n})`;
         });
         managerUpdateNav?.();
       }
@@ -2567,10 +2620,13 @@
         panel.id='wd-dex-tasks-v16';
         const tasks=dexTaskCore.tasks || [];
         panel.innerHTML=`
-          <div class="wdd-head"><div><b>Dex Completion Tasks v1.11.1</b><small style="display:block;color:#9ba9bc">Only things the cleaner is preserving specifically to complete missing Dex entries.</small></div><div class="sp"></div><button id="wd-dex-refresh">Reload data</button><button id="wd-dex-back">Back</button><button id="wd-dex-close">×</button></div>
-          <div class="wdd-note">These are <b>not</b> personal breeding projects. For EVOLVE the cleaner keeps one eligible source. For BREED it keeps a compatible ♀ + ♂ pair whenever both exist; if a pair is unavailable it keeps the safest available parent and flags what is missing. Once you obtain that Dex entry, press <b>Reload data</b> and the task disappears automatically.</div>
-          <div class="wdd-wrap"><table><thead><tr><th>Action</th><th>Missing Dex entry</th><th>Use this Pokémon</th><th>Nature / Ability</th><th>What to do</th></tr></thead><tbody>
-            ${tasks.length ? tasks.map(t=>`<tr><td><span class="tag">${escHtml(t.Type)}</span>${t.PairStatus && t.Type==='BREED' ? `<small>${escHtml(t.PairStatus)}</small>` : ''}</td><td><b>#${t.MissingDex} ${escHtml(t.Missing)}</b></td><td><b>${escHtml(t.UseLabel || `#${t.UseID} ${t.Use}`)}</b></td><td>${escHtml(t.Nature)}<small>${escHtml(t.Ability)}</small></td><td>${escHtml(t.Note)}</td></tr>`).join('') : '<tr><td colspan="5" style="padding:22px;text-align:center;color:#8e9caf">No current Dex-completion evolution/breeding tasks.</td></tr>'}
+          <div class="wdd-head"><div><b>Pokédex Tasks</b><small style="display:block;color:#9ba9bc">Pokémon you still need to breed or evolve to complete your collection.</small></div><div class="sp"></div><button id="wd-dex-refresh">Reload</button><button id="wd-dex-back">Back</button><button id="wd-dex-close">×</button></div>
+          <div class="wdd-note">This list is generated from the Pokédex entries you are still missing.
+            For <b>EVOLVE</b>, the manager keeps one Pokémon that can become the missing entry.
+            For <b>BREED</b>, it keeps a compatible female and male whenever possible.
+            Once you obtain the missing Pokémon, press <b>Reload</b> and the completed task disappears automatically.</div>
+          <div class="wdd-wrap"><table><thead><tr><th>Action</th><th>Missing Pokémon</th><th>Use this Pokémon</th><th>Nature / Ability</th><th>What to do</th></tr></thead><tbody>
+            ${tasks.length ? tasks.map(t=>`<tr><td><span class="tag">${escHtml(t.Type)}</span>${t.PairStatus && t.Type==='BREED' ? `<small>${escHtml(t.PairStatus)}</small>` : ''}</td><td><b>#${t.MissingDex} ${escHtml(t.Missing)}</b></td><td><b>${escHtml(t.UseLabel || `#${t.UseID} ${t.Use}`)}</b></td><td>${escHtml(t.Nature)}<small>${escHtml(t.Ability)}</small></td><td>${escHtml(t.Note)}</td></tr>`).join('') : '<tr><td colspan="5" style="padding:22px;text-align:center;color:#8e9caf">No Pokédex breeding or evolution tasks right now.</td></tr>'}
           </tbody></table></div>`;
         managerAttachView(panel, '.wdd-head');
 
@@ -2580,7 +2636,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.11.1
+      // BOX ORGANIZER v1.15
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -2588,21 +2644,167 @@
       // group species/categories into boxes but cannot force exact tile order.
       // ─────────────────────────────────────────────────────────────
 
-      const ORGANIZER_CATEGORY_ORDER = [
+
+      const ORGANIZER_PREFS_KEY = 'worlddex.boxManager.v1.12.organizerPrefs';
+
+      const ORGANIZER_SECTION_DEFAULT_ORDER = [
         'SPECIAL',
-        'SYNCRO',
+        'BATTLE_READY',
+        'DEX_TASK',
         'BREED_NOW',
         'TO_BE',
-        'FAMILY',
-        'DEX_TASK',
+        'SYNCRO',
         'FINAL',
         'STORAGE',
         'RELEASE'
       ];
 
+      const ORGANIZER_SECTION_LABEL = {
+        SPECIAL:'SPECIAL',
+        BATTLE_READY:'BATTLE READY',
+        DEX_TASK:'POKÉDEX TASKS',
+        BREED_NOW:'BREEDING',
+        TO_BE:'BREED LATER',
+        SYNCRO:'SYNCHRONIZE',
+        FINAL:'FINAL EVOLUTIONS',
+        STORAGE:'STORAGE',
+        RELEASE:'CLEANUP CANDIDATES'
+      };
+
+      function normalizeOrganizerSectionOrder(raw) {
+        const incoming = Array.isArray(raw) ? raw.map(String) : [];
+        const out = [];
+
+        for (const key of incoming) {
+          if (
+            ORGANIZER_SECTION_DEFAULT_ORDER.includes(key) &&
+            !out.includes(key)
+          ) out.push(key);
+        }
+
+        for (const key of ORGANIZER_SECTION_DEFAULT_ORDER) {
+          if (!out.includes(key)) out.push(key);
+        }
+
+        return out;
+      }
+
+      const ORGANIZER_PRESETS = {
+        minimal: {
+          keepTrainedTogether:false,
+          trainedEv:true,
+          trainedLevel:true,
+          trainedLevelMin:80,
+          keepBreedersTogether:false,
+          keepSynchronizeTogether:false,
+          keepDexTasksTogether:false,
+          keepSpecialsTogether:false,
+          renameBoxes:false,
+          keepFavouritesInPlace:true,
+          layoutPriority:'balanced',
+          categoryOrder:[...ORGANIZER_SECTION_DEFAULT_ORDER]
+        },
+        recommended: {
+          keepTrainedTogether:true,
+          trainedEv:true,
+          trainedLevel:true,
+          trainedLevelMin:80,
+          keepBreedersTogether:true,
+          keepSynchronizeTogether:false,
+          keepDexTasksTogether:true,
+          keepSpecialsTogether:true,
+          renameBoxes:true,
+          keepFavouritesInPlace:false,
+          layoutPriority:'balanced',
+          categoryOrder:[...ORGANIZER_SECTION_DEFAULT_ORDER]
+        },
+        functional: {
+          keepTrainedTogether:true,
+          trainedEv:true,
+          trainedLevel:true,
+          trainedLevelMin:80,
+          keepBreedersTogether:true,
+          keepSynchronizeTogether:true,
+          keepDexTasksTogether:true,
+          keepSpecialsTogether:true,
+          renameBoxes:true,
+          keepFavouritesInPlace:false,
+          layoutPriority:'balanced',
+          categoryOrder:[...ORGANIZER_SECTION_DEFAULT_ORDER]
+        }
+      };
+
+      function normalizeOrganizerPrefs(raw = {}) {
+        const base = ORGANIZER_PRESETS.recommended;
+        return {
+          keepTrainedTogether: raw.keepTrainedTogether ?? base.keepTrainedTogether,
+          trainedEv: raw.trainedEv ?? base.trainedEv,
+          trainedLevel: raw.trainedLevel ?? base.trainedLevel,
+          trainedLevelMin: Math.max(1, Math.min(100, Number(raw.trainedLevelMin ?? base.trainedLevelMin) || 80)),
+          keepBreedersTogether: raw.keepBreedersTogether ?? base.keepBreedersTogether,
+          keepSynchronizeTogether: raw.keepSynchronizeTogether ?? base.keepSynchronizeTogether,
+          keepDexTasksTogether: raw.keepDexTasksTogether ?? base.keepDexTasksTogether,
+          keepSpecialsTogether: raw.keepSpecialsTogether ?? base.keepSpecialsTogether,
+          renameBoxes: raw.renameBoxes ?? base.renameBoxes,
+          keepFavouritesInPlace: raw.keepFavouritesInPlace ?? base.keepFavouritesInPlace,
+          layoutPriority: ['balanced','min_moves','ordered'].includes(raw.layoutPriority)
+            ? raw.layoutPriority
+            : (base.layoutPriority || 'balanced'),
+          categoryOrder: normalizeOrganizerSectionOrder(
+            raw.categoryOrder || base.categoryOrder
+          ),
+          preset: ['minimal','recommended','functional','custom'].includes(raw.preset) ? raw.preset : 'recommended'
+        };
+      }
+
+      function loadOrganizerPrefs() {
+        try { return normalizeOrganizerPrefs(JSON.parse(localStorage.getItem(ORGANIZER_PREFS_KEY) || '{}')); }
+        catch { return normalizeOrganizerPrefs(); }
+      }
+
+      let organizerPrefsState = loadOrganizerPrefs();
+
+      function saveOrganizerPrefs() {
+        try { localStorage.setItem(ORGANIZER_PREFS_KEY, JSON.stringify(organizerPrefsState)); } catch {}
+      }
+
+      function organizerPrefs() { return { ...organizerPrefsState }; }
+
+      function setOrganizerPreset(name) {
+        const preset = ORGANIZER_PRESETS[name];
+        if (!preset) return;
+
+        organizerPrefsState = normalizeOrganizerPrefs({
+          ...preset,
+          categoryOrder:organizerPrefsState.categoryOrder,
+          preset:name
+        });
+        saveOrganizerPrefs();
+      }
+
+      function organizerMaxEV(m) {
+        return Math.max(...STATS.map(k => Number(m?.evs?.[k] || 0)));
+      }
+
+      function organizerIsTrained(m, prefs = organizerPrefsState) {
+        if (!prefs.keepTrainedTogether) return false;
+        const evReady = prefs.trainedEv && (evTotal(m) >= 200 || organizerMaxEV(m) >= 100);
+        const levelReady = prefs.trainedLevel && Number(m?.lvl || 0) >= Number(prefs.trainedLevelMin || 80);
+        return evReady || levelReady;
+      }
+
+      function organizerIsSpecial(m) {
+        return !!(m.shiny || m.shadow || m.rainbow || m.favourite || Number(m.dex) === 132 || groupsOf(m).includes('no-eggs'));
+      }
+
+      const ORGANIZER_CATEGORY_ORDER = [
+        'PINNED','SPECIAL','BATTLE_READY','DEX_TASK','BREED_NOW','TO_BE','SYNCRO','FAMILY','FINAL','STORAGE','RELEASE'
+      ];
+
       const ORGANIZER_CATEGORY_LABEL = {
-        SPECIAL:'SPECIAL', SYNCRO:'SYNCRO', BREED_NOW:'BREED NOW', TO_BE:'TO-BE',
-        FAMILY:'FAMILY', DEX_TASK:'DEX TASKS', FINAL:'FINAL EVO', STORAGE:'STORAGE', RELEASE:'RELEASE'
+        PINNED:'FAVOURITE (PINNED)', SPECIAL:'SPECIAL', BATTLE_READY:'BATTLE READY', DEX_TASK:'POKÉDEX TASKS',
+        BREED_NOW:'BREEDING', TO_BE:'BREED LATER', SYNCRO:'SYNCHRONIZE', FAMILY:'FAMILY',
+        FINAL:'FINAL EVOLUTIONS', STORAGE:'STORAGE', RELEASE:'CLEANUP CANDIDATES'
       };
 
       function detectedPCConfig() {
@@ -2626,23 +2828,20 @@
         return 'FAMILY';
       }
 
-      function organizerCategory(m) {
+      function organizerCategory(m, prefs = organizerPrefsState) {
         const id=Number(m.id);
         if (candidateById.has(id)) return 'RELEASE';
-        if (m.shiny||m.shadow||m.rainbow||m.favourite||Number(m.dex)===132||groupsOf(m).includes('no-eggs')) return 'SPECIAL';
-
-        const isSynchronize =
-          String(m.ability||'').toLowerCase().replace(/[\s_-]+/g,'') === 'synchronize';
-        if (isSynchronize) return 'SYNCRO';
-
-        if (dexTaskCore.evoParents.has(id) || dexTaskCore.breedParents.has(id)) return 'DEX_TASK';
-
+        if (prefs.keepFavouritesInPlace && m.favourite) return 'PINNED';
+        if (prefs.keepSpecialsTogether && organizerIsSpecial(m)) return 'SPECIAL';
+        if (organizerIsTrained(m, prefs)) return 'BATTLE_READY';
+        if (prefs.keepDexTasksTogether && (dexTaskCore.evoParents.has(id) || dexTaskCore.breedParents.has(id))) return 'DEX_TASK';
         const mode=familyMode(m);
-        if (mode===FAMILY_MODE.BREED) return 'BREED_NOW';
-        if (mode===FAMILY_MODE.TO_BE) return 'TO_BE';
-
-        // DONE / NO_BREED have no dedicated Organizer category. Survivors are
-        // routed by what they actually are: final evolution or normal storage.
+        if (prefs.keepBreedersTogether) {
+          if (mode===FAMILY_MODE.BREED) return 'BREED_NOW';
+          if (mode===FAMILY_MODE.TO_BE) return 'TO_BE';
+        }
+        const isSynchronize = String(m.ability||'').toLowerCase().replace(/[\s_-]+/g,'') === 'synchronize';
+        if (prefs.keepSynchronizeTogether && isSynchronize) return 'SYNCRO';
         if (isFinalDex(m.dex)) return 'FINAL';
         return 'STORAGE';
       }
@@ -2662,7 +2861,14 @@
             .join(' · ');
         }
         if (category==='SYNCRO') return m.nature||'Unknown nature';
-        if (category==='RELEASE') return candidateById.get(Number(m.id))?.Reason||'Cleaner candidate';
+        if (category==='BATTLE_READY') {
+          const parts=[];
+          if (evTotal(m) >= 200 || organizerMaxEV(m) >= 100) parts.push(`${evTotal(m)} EVs`);
+          if (Number(m.lvl||0) >= Number(organizerPrefsState.trainedLevelMin||80)) parts.push(`Lv.${Number(m.lvl||0)}`);
+          return parts.join(' · ') || 'Trained';
+        }
+        if (category==='PINNED') return 'Favourite — stays in its current box';
+        if (category==='RELEASE') return candidateById.get(Number(m.id))?.Reason||'Cleanup candidate';
         return '';
       }
 
@@ -2675,22 +2881,31 @@
         return Number(a.id)-Number(b.id);
       }
 
+      function cleanOrganizerBoxBase(base) {
+        let name = String(base || 'BOX').trim() || 'BOX';
+
+        // Internal alternate-family labels such as "Dratini-Alt" are useful
+        // for data handling but not for a player's physical PC box name.
+        name = name
+          .replace(/\s*[-_]\s*alt(?:\s+[a-z0-9]+)?\s*$/i, '')
+          .trim();
+
+        return name || 'BOX';
+      }
+
       function safeBoxName(base, index, part=0, parts=1) {
-        const prefix=String(index+1).padStart(2,'0')+' ';
-        let tail=String(base||'BOX');
-        if(parts>1) tail += ` ${part+1}`;
-        return (prefix+tail).slice(0,16);
+        // Worlddex already displays the physical box number separately.
+        let name=cleanOrganizerBoxBase(base);
+        if(parts>1) name += ` ${part+1}`;
+        return name.slice(0,16);
       }
 
       function familyBoxBase(info, mode) {
-        // Breeding state belongs in the Manager UI, not in the physical PC box
-        // name. A dedicated Charmander/Dratini/Pancham box should simply be
-        // called Charmander / Dratini / Pancham.
-        return String(info?.label || 'FAMILY');
+        return cleanOrganizerBoxBase(info?.label || 'FAMILY');
       }
 
       function singleFamilyBoxName(base, part=0, parts=1) {
-        let name = String(base || 'FAMILY').trim() || 'FAMILY';
+        let name=cleanOrganizerBoxBase(base || 'FAMILY');
         if (parts > 1) name += ` ${part + 1}`;
         return name.slice(0, 16);
       }
@@ -2771,7 +2986,75 @@
           .toLowerCase();
       }
 
-      function stableAssignOrganizerBoxes(boxDefs, boxCount) {
+      function maxScoreIncreasingAssignment(scores) {
+        // Assign each logical box-group to a unique physical box while preserving
+        // logical order: group 0 < group 1 < group 2 ...
+        //
+        // This is what the Category order UI actually promises. We still allow
+        // gaps between sections in Balanced mode so the planner can save moves.
+        const n=scores.length;
+        const m=n ? scores[0].length : 0;
+        if(!n) return [];
+        if(n>m) throw new Error(`Cannot place ${n} logical boxes into ${m} physical boxes.`);
+
+        const NEG=-1e30;
+        const dp=Array.from({length:n+1},()=>Array(m+1).fill(NEG));
+        const take=Array.from({length:n+1},()=>Array(m+1).fill(false));
+
+        for(let j=0;j<=m;j++) dp[0][j]=0;
+
+        for(let i=1;i<=n;i++){
+          for(let j=1;j<=m;j++){
+            // Option 1: leave physical box j-1 unused by logical groups.
+            let best=dp[i][j-1];
+            let choose=false;
+
+            // Option 2: place logical group i-1 into physical box j-1.
+            const s=Number(scores[i-1][j-1]);
+            if(dp[i-1][j-1]>NEG/2 && Number.isFinite(s)){
+              const candidate=dp[i-1][j-1]+s;
+              if(candidate>best){
+                best=candidate;
+                choose=true;
+              }
+            }
+
+            dp[i][j]=best;
+            take[i][j]=choose;
+          }
+        }
+
+        if(dp[n][m]<=NEG/2){
+          throw new Error('No valid ordered box placement could be found with the current capacity / pinned-box settings.');
+        }
+
+        const assignment=Array(n).fill(-1);
+        let i=n,j=m;
+
+        while(i>0 && j>0){
+          if(take[i][j]){
+            assignment[i-1]=j-1;
+            i--;
+            j--;
+          } else {
+            j--;
+          }
+        }
+
+        if(assignment.some(x=>x<0)){
+          throw new Error('Ordered placement backtracking failed.');
+        }
+
+        return assignment;
+      }
+
+      function stableAssignOrganizerBoxes(
+        boxDefs,
+        boxCount,
+        capacity = ORGANIZER_SAFE_CAPACITY,
+        pinnedCounts = new Map(),
+        layoutPriority = 'balanced'
+      ) {
         if (!boxDefs.length) return {
           targets: [],
           stayed: 0,
@@ -2786,15 +3069,26 @@
         const currentNames =
           (window.Game && window.Game.state && window.Game.state.boxNames) || {};
 
-        // Score is dominated by exact Pokémon overlap. One additional Pokémon
-        // staying put is always worth more than every tie-break bonus combined.
+        // Choose how much we care about preserving current physical positions
+        // versus keeping the logical Organizer sections visually ordered.
         //
-        // Smaller bonuses stabilize already named boxes and make first-run ties
-        // deterministic without overriding move minimization.
-        const SCORE_PER_STAY = 1_000_000;
-        const SCORE_NAME_MATCH = 5_000;
-        const SCORE_CANONICAL_EXACT = 100;
-        const SCORE_CANONICAL_NEAR = 1;
+        // min_moves: current v1.11/v1.12 behavior — aggressively preserve boxes.
+        // balanced:  preserve established groups, but fix obvious stragglers.
+        // ordered:   strongly follow logical order, accepting more moves.
+        const mode = ['balanced','min_moves','ordered'].includes(layoutPriority)
+          ? layoutPriority
+          : 'balanced';
+
+        const weights = mode === 'min_moves'
+          ? { stay:1_000_000, name:5_000, exact:100, nearPerBox:1 }
+          : mode === 'ordered'
+            ? { stay:200, name:50, exact:2_000_000, nearPerBox:100_000 }
+            : { stay:4_000, name:1_000, exact:20_000, nearPerBox:1_000 };
+
+        const SCORE_PER_STAY = weights.stay;
+        const SCORE_NAME_MATCH = weights.name;
+        const SCORE_CANONICAL_EXACT = weights.exact;
+        const SCORE_CANONICAL_NEAR = weights.nearPerBox;
 
         const scores = boxDefs.map((def, defIndex) => {
           const currentCounts = new Map();
@@ -2807,6 +3101,9 @@
           const expectedBase = normalizedOrganizerBoxName(def.base);
 
           return Array.from({ length: boxCount }, (_, physicalBox) => {
+            const pinned = Number(pinnedCounts.get(physicalBox) || 0);
+            const free = Math.max(0, Number(capacity) - pinned);
+            if (def.items.length > free) return -1_000_000_000_000;
             const overlap = currentCounts.get(physicalBox) || 0;
 
             const currentName = normalizedOrganizerBoxName(
@@ -2825,10 +3122,11 @@
                 : 0;
 
             // This only resolves ties. It can never beat one extra Pokémon stay.
+            const distance = Math.abs(physicalBox - defIndex);
             const canonical =
               physicalBox === defIndex
                 ? SCORE_CANONICAL_EXACT
-                : Math.max(0, boxCount - Math.abs(physicalBox - defIndex)) * SCORE_CANONICAL_NEAR;
+                : Math.max(0, boxCount - distance) * SCORE_CANONICAL_NEAR;
 
             return overlap * SCORE_PER_STAY + nameMatch + canonical;
           });
@@ -2839,14 +3137,28 @@
           for (const score of row) maxScore = Math.max(maxScore, score);
         }
 
-        // Hungarian implementation minimizes cost, so invert the score.
-        const cost = scores.map(row => row.map(score => maxScore - score));
-        const targets = hungarianMin(cost);
+        let targets;
+
+        if(mode==='min_moves'){
+          // This is the only mode that may ignore category order entirely.
+          // It answers one question only: "how few Pokémon can I move?"
+          const cost=scores.map(row=>row.map(score=>maxScore-score));
+          targets=hungarianMin(cost);
+        } else {
+          // Balanced and Ordered both respect the user's Category order.
+          // Balanced may leave gaps to preserve existing boxes; Ordered's score
+          // heavily prefers the earliest canonical positions.
+          targets=maxScoreIncreasingAssignment(scores);
+        }
 
         let stayed = 0;
         let total = 0;
         boxDefs.forEach((def, i) => {
           const target = targets[i];
+          const pinned = Number(pinnedCounts.get(target) || 0);
+          if (def.items.length > Number(capacity) - pinned) {
+            throw new Error(`The current favourite-lock settings leave too little room in Box ${target + 1}. Try another organization style or disable “Keep favourites where they are”.`);
+          }
           for (const m of def.items) {
             total++;
             if ((Number(m.box) || 0) === target) stayed++;
@@ -2857,11 +3169,11 @@
           targets,
           stayed,
           total,
-          strategy: 'max-overlap'
+          strategy: mode
         };
       }
 
-      function buildOrganizerPlan(boxCount=detectBoxCount(), capacity=detectBoxCapacity(), autoOwnMin=12) {
+      function buildOrganizerPlan(boxCount=detectBoxCount(), capacity=detectBoxCapacity(), autoOwnMin=12, prefs=organizerPrefs()) {
         boxCount=Math.max(1,Math.floor(Number(boxCount)||0));
         capacity=Math.min(
           ORGANIZER_SAFE_CAPACITY,
@@ -2869,23 +3181,47 @@
         );
         autoOwnMin=Math.max(1,Math.floor(Number(autoOwnMin)||12));
 
+        prefs=normalizeOrganizerPrefs(prefs);
         const active=mons.filter(m=>!releasedIds.has(Number(m.id))).slice();
-        if(active.length>boxCount*capacity) {
-          throw new Error(`Not enough capacity: ${active.length} Pokémon for ${boxCount}×${capacity} slots.`);
+        if(active.length>boxCount*capacity) throw new Error(`Not enough room: ${active.length} Pokémon for ${boxCount} boxes at the selected capacity.`);
+
+        const pinned = prefs.keepFavouritesInPlace ? active.filter(m => !!m.favourite) : [];
+        const pinnedIds = new Set(pinned.map(m => Number(m.id)));
+        const pinnedCounts = new Map();
+        for (const m of pinned) {
+          const b = Number(m.box) || 0;
+          pinnedCounts.set(b, (pinnedCounts.get(b) || 0) + 1);
         }
+        const movable = active.filter(m => !pinnedIds.has(Number(m.id)));
 
         const special=[];
+        const battleReady=[];
         const sync=[];
         const dexTasks=[];
         const release=[];
+
+        // If Breeding Plans are ignored for organization, ordinary Pokémon are
+        // pooled by function instead of being kept as family blobs.
+        const ordinaryFinal=[];
+        const ordinaryStorage=[];
+
         const familyGroups=new Map();
 
-        for(const m of active){
-          const cat=organizerCategory(m);
+        for(const m of movable){
+          const cat=organizerCategory(m,prefs);
           if(cat==='SPECIAL'){special.push(m);continue;}
+          if(cat==='BATTLE_READY'){battleReady.push(m);continue;}
           if(cat==='SYNCRO'){sync.push(m);continue;}
           if(cat==='DEX_TASK'){dexTasks.push(m);continue;}
           if(cat==='RELEASE'){release.push(m);continue;}
+
+          // Breeding Plans OFF means exactly that for the Organizer:
+          // no family grouping, no family-size promotion, no family box policy.
+          if(!prefs.keepBreedersTogether){
+            if(cat==='FINAL') ordinaryFinal.push(m);
+            else ordinaryStorage.push(m);
+            continue;
+          }
 
           const familyKey=familyKeyOf(m);
           const mode=familyMode(m);
@@ -2911,7 +3247,7 @@
         };
 
         function groupCategory(items){
-          const cats=[...new Set(items.map(organizerCategory))];
+          const cats=[...new Set(items.map(m=>organizerCategory(m,prefs)))];
           cats.sort((a,b)=>(categoryPriority[a]??99)-(categoryPriority[b]??99));
           return cats[0] || 'STORAGE';
         }
@@ -2938,6 +3274,7 @@
             if(!chunk.length) continue;
             chunks.push({
               kind:'FAMILY',
+              section:group.category,
               familyKey:group.key,
               mode:group.mode,
               base:familyBoxBase(group.info,group.mode),
@@ -2999,6 +3336,7 @@
               const familyKeys=bin.groups.map(g=>g.key);
               defs.push({
                 kind:cat,
+                section:cat,
                 base:ORGANIZER_CATEGORY_LABEL[cat]||cat,
                 items,
                 groups:bin.groups,
@@ -3013,13 +3351,22 @@
         }
 
         const fixedDefs=[];
-        if(special.length) fixedDefs.push(...chunkSimple(special,{kind:'SPECIAL',base:'SPECIAL'}));
+        if(special.length) fixedDefs.push(...chunkSimple(special,{kind:'SPECIAL',section:'SPECIAL',base:'SPECIAL'}));
+        if(battleReady.length) fixedDefs.push(...chunkSimple(battleReady,{kind:'BATTLE_READY',section:'BATTLE_READY',base:'BATTLE READY'}));
+        if(dexTasks.length) fixedDefs.push(...chunkSimple(dexTasks,{kind:'DEX_TASK',section:'DEX_TASK',base:'POKÉDEX TASKS'}));
+
+        // Breeding Plans OFF: these are ordinary collection pools, not family boxes.
+        if(ordinaryFinal.length) fixedDefs.push(
+          ...chunkSimple(ordinaryFinal,{kind:'FINAL',section:'FINAL',base:'FINAL EVOLUTIONS'})
+        );
+        if(ordinaryStorage.length) fixedDefs.push(
+          ...chunkSimple(ordinaryStorage,{kind:'STORAGE',section:'STORAGE',base:'STORAGE'})
+        );
         if(sync.length){
           sync.sort((a,b)=>String(a.nature||'').localeCompare(String(b.nature||''))||organizerSort(a,b));
-          fixedDefs.push(...chunkSimple(sync,{kind:'SYNCRO',base:'SYNCRO'}));
+          fixedDefs.push(...chunkSimple(sync,{kind:'SYNCRO',section:'SYNCRO',base:'SYNCHRONIZE'}));
         }
-        if(dexTasks.length) fixedDefs.push(...chunkSimple(dexTasks,{kind:'DEX_TASK',base:'DEX TASKS'}));
-        if(release.length) fixedDefs.push(...chunkSimple(release,{kind:'RELEASE',base:'RELEASE'}));
+        if(release.length) fixedDefs.push(...chunkSimple(release,{kind:'RELEASE',section:'RELEASE',base:'RELEASE'}));
 
         const forcedOwn=[];
         const neverOwn=[];
@@ -3098,7 +3445,27 @@
         ];
 
         const sharedDefs=packShared(sharedGroups);
-        const boxDefs=[...fixedDefs,...privateDefs,...sharedDefs];
+
+        const unsortedBoxDefs=[...fixedDefs,...privateDefs,...sharedDefs]
+          .map((def,originalIndex)=>({
+            ...def,
+            originalIndex,
+            section:def.section || def.kind || 'STORAGE'
+          }));
+
+        const sectionOrder=normalizeOrganizerSectionOrder(prefs.categoryOrder);
+        const sectionRank=new Map(sectionOrder.map((key,i)=>[key,i]));
+
+        const boxDefs=unsortedBoxDefs
+          .slice()
+          .sort((a,b)=>{
+            const ra=sectionRank.get(a.section) ?? 999;
+            const rb=sectionRank.get(b.section) ?? 999;
+            return ra-rb || a.originalIndex-b.originalIndex;
+          });
+
+        const activeSections=[...new Set(boxDefs.map(def=>def.section))]
+          .filter(key=>ORGANIZER_SECTION_DEFAULT_ORDER.includes(key));
 
         if(boxDefs.length>boxCount){
           const forcedNames=forcedOwn.map(g=>g.info?.label||g.key);
@@ -3119,7 +3486,13 @@
         // IMPORTANT: logical box order is NOT physical box order anymore.
         // Pick the physical destinations that keep the largest possible number
         // of already-correct Pokémon in place.
-        const stablePlacement = stableAssignOrganizerBoxes(boxDefs, boxCount);
+        const stablePlacement = stableAssignOrganizerBoxes(
+          boxDefs,
+          boxCount,
+          capacity,
+          pinnedCounts,
+          prefs.layoutPriority
+        );
 
         boxDefs.forEach((def,defIndex)=>{
           const targetBox = stablePlacement.targets[defIndex];
@@ -3129,7 +3502,7 @@
 
           const entries=[];
           for(const m of def.items){
-            const category=organizerCategory(m);
+            const category=organizerCategory(m,prefs);
             const entry={
               id:Number(m.id),
               mon:m,
@@ -3189,10 +3562,30 @@
           });
         });
 
-        boxSummaries.sort((a,b)=>Number(a.Box)-Number(b.Box));
+        for (const m of pinned) {
+          const targetBox = Number(m.box) || 0;
+          const entry = {id:Number(m.id),mon:m,category:'PINNED',details:'Favourite — stays in its current box',currentBox:targetBox,targetBox,stickyGroup:'PINNED'};
+          assignments.push(entry);
+          targetById.set(entry.id,targetBox);
+          if (!boxes.has(targetBox)) boxes.set(targetBox,[]);
+          boxes.get(targetBox).push(entry);
+          let summary = boxSummaries.find(r => Number(r.Box) === targetBox + 1);
+          if (!summary) {
+            const existingName = window.Game?.state?.boxNames?.[targetBox] ?? window.Game?.state?.boxNames?.[String(targetBox)] ?? `Box ${targetBox + 1}`;
+            summary = {Box:targetBox+1,Name:String(existingName || `Box ${targetBox + 1}`),Count:0,Categories:'',Species:''};
+            boxSummaries.push(summary);
+          }
+          summary.Count += 1;
+          const pinCat='FAVOURITE (PINNED)';
+          if (!String(summary.Categories||'').includes(pinCat)) summary.Categories=[summary.Categories,pinCat].filter(Boolean).join(', ');
+          const speciesMap=new Map();
+          for(const x of boxes.get(targetBox)) speciesMap.set(x.mon.species,(speciesMap.get(x.mon.species)||0)+1);
+          summary.Species=[...speciesMap.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(([sp,n])=>`${sp}×${n}`).join(', ');
+        }
 
+        boxSummaries.sort((a,b)=>Number(a.Box)-Number(b.Box));
         const moves=assignments.filter(x=>x.currentBox!==x.targetBox);
-        const usedBoxes=boxDefs.length;
+        const usedBoxes=new Set(assignments.map(x=>x.targetBox)).size;
         const alreadyPlaced = assignments.length - moves.length;
 
         // UI summary counters. v1.5.2 accidentally dropped this object while the
@@ -3202,10 +3595,23 @@
           categoryCounts[x.category]=(categoryCounts[x.category]||0)+1;
         }
 
+        const currentNames=(window.Game && window.Game.state && window.Game.state.boxNames) || {};
+        const renameChanges = prefs.renameBoxes
+          ? [...boxNames.entries()].filter(([b,name]) => String(currentNames[b] ?? currentNames[String(b)] ?? '') !== String(name || '')).length
+          : 0;
+
         return {
           boxCount,capacity,autoOwnMin,total:active.length,usedBoxes,
           assignments,targetById,boxes,boxNames,boxSummaries,moves,categoryCounts,
           alreadyPlaced,
+          pinnedCount:pinned.length,
+          prefs:{...prefs},
+          renameEnabled:!!prefs.renameBoxes,
+          renameChanges,
+          layoutPriority:prefs.layoutPriority,
+          categoryOrder:[...sectionOrder],
+          activeSections:[...activeSections],
+          breedingOrganizationEnabled:!!prefs.keepBreedersTogether,
           stablePlacement,
           physicalUsedBoxes:[...boxNames.keys()].sort((a,b)=>a-b),
           autoOwnFamilies:selectedAutoOwn.map(g=>g.info?.label||g.key),
@@ -3247,7 +3653,7 @@
         const blob = new Blob([organizerPlanTSV(plan)], { type:'text/tab-separated-values;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'worlddex_box_organizer_v1_11_1_plan.tsv';
+        a.download = 'worlddex_box_organizer_v1_15_plan.tsv';
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       }
@@ -3282,15 +3688,44 @@
         if (stats.total) stats.total.textContent = String(plan.total);
         if (stats.moves) stats.moves.textContent = String(plan.moves.length);
         if (stats.used) stats.used.textContent = `${plan.usedBoxes}/${plan.boxCount}`;
+        const pTotal=document.getElementById('wd-org-preview-total'), pStay=document.getElementById('wd-org-preview-stay'), pMove=document.getElementById('wd-org-preview-move'), pBoxes=document.getElementById('wd-org-preview-boxes'), pRenames=document.getElementById('wd-org-preview-renames');
+        if(pTotal) pTotal.textContent=String(plan.total);
+        if(pStay) pStay.textContent=String(plan.alreadyPlaced);
+        if(pMove) pMove.textContent=String(plan.moves.length);
+        if(pBoxes) pBoxes.textContent=`${plan.usedBoxes}/${plan.boxCount}`;
+        if(pRenames) pRenames.textContent=String(plan.renameChanges||0);
 
-        const cat = document.getElementById('wd-organizer-cats');
-        if (cat) {
-          const counts = plan.categoryCounts || {};
-          cat.textContent = ORGANIZER_CATEGORY_ORDER
-            .filter(k => counts[k])
-            .map(k => `${ORGANIZER_CATEGORY_LABEL[k] || k} ${counts[k]}`)
-            .join(' · ');
+      }
+
+      function updateOrganizerApplyButton(plan = organizerPlan, completed = false) {
+        const btn = document.getElementById('wd-organizer-apply');
+        if (!btn) return;
+
+        if (!plan) {
+          btn.textContent = 'APPLY ORGANIZATION';
+          btn.disabled = true;
+          return;
         }
+
+        const moveN = Number(plan.moves?.length || 0);
+        const renameN = Number(plan.renameChanges || 0);
+        const nothingToDo = moveN === 0 && renameN === 0;
+
+        if (completed && nothingToDo) {
+          btn.textContent = 'ORGANIZED ✓';
+          btn.disabled = true;
+          return;
+        }
+
+        if (nothingToDo) {
+          btn.textContent = 'NOTHING TO ORGANIZE ✓';
+          btn.disabled = true;
+          return;
+        }
+
+        btn.textContent =
+          `APPLY ORGANIZATION (${moveN} moves${renameN ? ` · ${renameN} names` : ''})`;
+        btn.disabled = organizerBusy;
       }
 
       function rebuildOrganizerPlanFromUI() {
@@ -3305,18 +3740,23 @@
 
         const autoOwnMin = Number(document.getElementById('wd-organizer-ownmin')?.value || 12);
         try {
-          organizerPlan = buildOrganizerPlan(boxCount, capacity, autoOwnMin);
+          organizerPlan = buildOrganizerPlan(boxCount, capacity, autoOwnMin, organizerPrefsState);
           renderOrganizerBoxRows(organizerPlan);
+          const layoutLabel = organizerPlan.layoutPriority === 'ordered'
+            ? 'Keep boxes ordered'
+            : organizerPlan.layoutPriority === 'min_moves'
+              ? 'Minimize moves'
+              : 'Balanced';
           logOrganizer(
-            `Plan rebuilt: ${organizerPlan.total} mons, ${organizerPlan.moves.length} moves, ` +
-            `${organizerPlan.alreadyPlaced} already in place, ${organizerPlan.usedBoxes} used boxes.`,
+            `Preview updated: ${organizerPlan.moves.length} move(s), ` +
+            `${organizerPlan.alreadyPlaced} already in place · ${layoutLabel}.`,
             'ok'
           );
-          const btn = document.getElementById('wd-organizer-apply');
-          if (btn) btn.disabled = organizerBusy || organizerPlan.moves.length === 0;
+          updateOrganizerApplyButton(organizerPlan, false);
           return organizerPlan;
         } catch (err) {
           organizerPlan = null;
+          updateOrganizerApplyButton(null, false);
           logOrganizer(`PLAN ERROR: ${err?.message || err}`, 'error');
           alert(`Organizer plan error:\n\n${err?.message || err}`);
           return null;
@@ -3436,7 +3876,7 @@
 
             const seconds = Math.ceil(waitMs / 1000);
             logOrganizer(
-              `RATE LIMIT: ${label}. Pausing ${seconds}s, then retrying the same operation (${attempt + 1}/${maxRetries})…`,
+              `Worlddex is receiving a lot of requests. Waiting ${seconds}s, then continuing automatically…`,
               'warn'
             );
 
@@ -3568,7 +4008,7 @@
         if (btn) { btn.disabled = true; btn.textContent = 'VALIDATING…'; }
 
         try {
-          logOrganizer('Fetching live /api/box and validating the plan…', 'info');
+          logOrganizer('Checking your current PC before moving anything…', 'info');
           const liveRes = await organizerWith429Backoff(
             'Initial organizer live-box check',
             () => organizerGetJSON('/api/box')
@@ -3578,7 +4018,7 @@
           if (check.problems.length) {
             console.error('BOX ORGANIZER VALIDATION FAILED', check.problems);
             throw new Error(
-              `Live box changed since analysis (${check.problems.length} problem(s)). Re-run v1.11.1.\n` +
+              `Your PC changed after this preview was created (${check.problems.length} difference(s)). Press Reload and update the preview.\n` +
               check.problems.slice(0, 8).join('\n')
             );
           }
@@ -3589,14 +4029,14 @@
           // target layout. The organizer is not allowed to target >100 in any box.
           if (plan.capacity > ORGANIZER_SAFE_CAPACITY) {
             throw new Error(
-              `Unsafe organizer capacity ${plan.capacity}. v1.11.1 reserves one slot per box, so max planner capacity is ${ORGANIZER_SAFE_CAPACITY} (backend max ${SERVER_BOX_MOVE_CAPACITY}).`
+              `The selected box capacity is too high for the safety margin. Use ${ORGANIZER_SAFE_CAPACITY} or lower.`
             );
           }
 
           const occupancy = validateOrganizerOccupancy(liveCurrent, plan);
           if (occupancy.problems.length) {
             throw new Error(
-              `Unsafe target occupancy detected:\n${occupancy.problems.join('\n')}`
+              `One or more destination boxes would be too full:\n${occupancy.problems.join('\n')}`
             );
           }
 
@@ -3614,10 +4054,7 @@
             }
           }
           console.table(occupancyRows);
-          logOrganizer(
-            `Occupancy preflight OK: every target box is <= ${ORGANIZER_SAFE_CAPACITY}; one physical backend slot remains reserved.`,
-            'ok'
-          );
+          logOrganizer('Safety check passed: every destination has enough room.', 'ok');
 
           const actualMoves = plan.assignments.filter(x => liveCurrent.get(x.id) !== x.targetBox);
           if (!actualMoves.length) {
@@ -3625,9 +4062,11 @@
           }
 
           const phrase = `ORGANIZE ${actualMoves.length}`;
+          const renameCount = plan.renameEnabled ? Number(plan.renameChanges || 0) : 0;
           const typed = prompt(
-            `This will MOVE ${actualMoves.length} Pokémon between boxes and rename ${plan.usedBoxes} used boxes.\n\n` +
-            `No Pokémon will be released by the organizer. Every target box is planned to <=99 even though the backend max is 100, leaving one reserve slot per box. The organizer keeps the 99/100 safety margin, checks capacity locally before every move, and performs an authoritative /api/box refresh every 10 successful moves or immediately after a backend inconsistency. All Organizer requests remain rate-limited.\n\n` +
+            `This will move ${actualMoves.length} Pokémon between boxes` +
+            (renameCount ? ` and rename ${renameCount} box(es)` : '') + `.\n\n` +
+            `No Pokémon will be released. The manager checks available space before and during the process and stops if your PC changes unexpectedly.\n\n` +
             `Type exactly:\n\n${phrase}`
           );
           if (typed !== phrase) {
@@ -3636,9 +4075,9 @@
           }
 
           if (!confirm(
-            `FINAL CONFIRMATION\n\nApply the v1.11.1 box organization?\n\n` +
-            `${actualMoves.length} move requests will run sequentially.\n` +
-            `The script stops on the first unexpected response.`
+            `FINAL CONFIRMATION\n\nApply this box organization?\n\n` +
+            `${actualMoves.length} Pokémon will be moved one at a time.\n` +
+            `If anything changes unexpectedly, the organizer stops.`
           )) {
             logOrganizer('Organization cancelled at final confirmation.', 'warn');
             return;
@@ -3696,7 +4135,7 @@
             // triggers an immediate refresh.
             if (successfulMovesSinceRefresh >= ORGANIZER_REFRESH_EVERY_MOVES) {
               logOrganizer(
-                `Periodic live sync after ${successfulMovesSinceRefresh} successful moves…`,
+                `Quick safety refresh after ${successfulMovesSinceRefresh} moves…`,
                 'info'
               );
               await refreshSchedulerState();
@@ -3757,7 +4196,7 @@
                 // scheduler pass move something OUT of it first if possible.
                 backendFullBoxes.add(dest);
                 logOrganizer(
-                  `SERVER FULL: Box ${dest+1} rejected an incoming move. Refreshing live state before the next scheduler step.`,
+                  `Box ${dest+1} is currently full. Rechecking the PC and finding another safe step…`,
                   'warn'
                 );
                 await sleep(250);
@@ -3786,7 +4225,7 @@
             await sleep(100);
           }
 
-          logOrganizer(`Moves complete (${ops} requests, ${tempOps} temporary buffer move(s)). Verifying…`, 'info');
+          logOrganizer(`Moves complete. Checking the final layout…`, 'info');
           const afterMoveRes = await organizerWith429Backoff(
             'Verify moved boxes',
             () => organizerGetJSON('/api/box')
@@ -3808,31 +4247,25 @@
             if (liveBox != null) m.box = Number(liveBox);
           }
 
-          if (btn) btn.textContent = 'RENAMING BOXES…';
           let renamed = 0;
           const renameErrors = [];
           const boxesToRename = [...plan.boxNames.keys()].sort((a,b)=>a-b);
-
-          for (const b of boxesToRename) {
-            const name = plan.boxNames.get(b) || '';
-            try {
-              await renameOrganizerBox(b, name);
-              renamed++;
-              logOrganizer(`RENAMED Box ${b + 1} → ${name}`, 'ok');
-            } catch (err) {
-              renameErrors.push({ box: b, name, error: String(err?.message || err) });
-              logOrganizer(`Rename failed for Box ${b + 1}: ${err?.message || err}`, 'error');
+          if (plan.renameEnabled) {
+            if (btn) btn.textContent = 'RENAMING BOXES…';
+            for (const b of boxesToRename) {
+              const name = plan.boxNames.get(b) || '';
+              try { await renameOrganizerBox(b, name); renamed++; logOrganizer(`Box ${b + 1} renamed to ${name}`, 'ok'); }
+              catch (err) { renameErrors.push({ box:b, name, error:String(err?.message||err) }); logOrganizer(`Could not rename Box ${b + 1}.`, 'error'); }
+              await sleep(100);
             }
-            await sleep(100);
-          }
+          } else logOrganizer('Box renaming is turned off. Existing names were left unchanged.', 'info');
 
           try {
             if (window.PCSystem?.reload) await window.PCSystem.reload();
           } catch {}
 
           logOrganizer(
-            `DONE — ${initialPending} target moves verified; ${renamed}/${plan.usedBoxes} box names saved.` +
-            (renameErrors.length ? ` ${renameErrors.length} rename error(s).` : ''),
+            `Done — ${initialPending} Pokémon moved.` + (plan.renameEnabled ? ` ${renamed} box name(s) updated.` : ' Box names were left unchanged.') + (renameErrors.length ? ` ${renameErrors.length} name(s) could not be changed.` : ''),
             renameErrors.length ? 'warn' : 'ok'
           );
 
@@ -3845,7 +4278,7 @@
           const remainingMoves = organizerPlan?.moves?.length || 0;
           if (remainingMoves) {
             logOrganizer(
-              `Post-run rebuild still sees ${remainingMoves} move(s). The backend move verification passed, so review the new plan before applying again.`,
+              `The refreshed preview still shows ${remainingMoves} move(s). Review it before applying again.`,
               'warn'
             );
           } else {
@@ -3855,32 +4288,22 @@
           alert(
             `Box organization complete.\n\n` +
             `${initialPending} Pokémon placed in their target boxes.\n` +
-            `${renamed}/${plan.usedBoxes} used boxes renamed.\n` +
-            (renameErrors.length ? `\n${renameErrors.length} box name(s) failed; movement itself was verified.` : '') +
-            `\n\nExact tile order inside a box cannot be forced because Worlddex's move endpoint accepts a box number, not a slot.`
+            (plan.renameEnabled ? `${renamed} box name(s) updated.\n` : `Box names were left unchanged.\n`) +
+            (renameErrors.length ? `\n${renameErrors.length} box name(s) could not be changed.` : '')
           );
         } catch (err) {
           logOrganizer(`STOPPED: ${err?.message || err}`, 'error');
           console.error('BOX ORGANIZER STOP', err);
           alert(
             `Organizer stopped.\n\n${err?.message || err}\n\n` +
-            `No releases are performed by the organizer. If some moves already succeeded, re-run v1.11.1 to calculate a fresh plan from the new state.`
+            `Organizing never releases Pokémon. If some moves already happened, press Reload and update the preview before trying again.`
           );
         } finally {
           organizerBusy = false;
-          if (btn) {
-            const remaining = organizerPlan?.moves?.length || 0;
-
-            if (organizerCompletedSuccessfully && remaining === 0) {
-              btn.textContent = 'ORGANIZED ✓ (0 moves)';
-              btn.disabled = true;
-            } else {
-              btn.textContent = remaining
-                ? `APPLY ORGANIZATION (${remaining} moves)`
-                : 'APPLY ORGANIZATION';
-              btn.disabled = !organizerPlan || remaining === 0;
-            }
-          }
+          updateOrganizerApplyButton(
+            organizerPlan,
+            organizerCompletedSuccessfully
+          );
         }
       }
 
@@ -4049,9 +4472,120 @@
           #wd-box-organizer-v14 #wd-organizer-apply:hover { background:#2d7148; }
           #wd-box-organizer-v14 .wdorg-body { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; overflow:hidden; }
           #wd-box-organizer-v14 .wdorg-tools { display:flex; gap:8px; align-items:end; flex-wrap:wrap; padding:9px 12px; background:#121822; border-bottom:1px solid #2d3849; }
+          #wd-box-organizer-v14 .wdorg-options { padding:10px 12px; border-bottom:1px solid #2d3849; background:#101620; }
+          #wd-box-organizer-v14 .wdorg-options-top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+          #wd-box-organizer-v14 .wdorg-options select { background:#0b1017; border:1px solid #344154; color:#fff; border-radius:7px; padding:6px 8px; }
+          #wd-box-organizer-v14 .wdorg-checks { display:flex; gap:10px 16px; flex-wrap:wrap; align-items:center; }
+          #wd-box-organizer-v14 .wdorg-checks label { display:flex; gap:6px; align-items:center; color:#c3cfde; }
+          #wd-box-organizer-v14 .wdorg-checks .sub { color:#93a3b7; }
+          #wd-box-organizer-v14 .wdorg-checks input[type=number] { width:58px; background:#0b1017; border:1px solid #344154; color:#fff; border-radius:6px; padding:4px 6px; }
+          #wd-box-organizer-v14 .wdorg-help { margin-top:7px; color:#8fa0b5; font-size:12px; }
+          #wd-box-organizer-v14 .wdorg-orderbar {
+            margin-top:8px;
+            display:flex;
+            align-items:center;
+            gap:8px;
+            flex-wrap:wrap;
+          }
+          #wd-box-organizer-v14 .wdorg-order-summary {
+            color:#91a2b7;
+            font-size:12px;
+            min-width:0;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+            flex:1 1 320px;
+          }
+          #wd-box-organizer-v14 .wdorg-order-editor {
+            margin-top:8px;
+            width:min(520px,100%);
+            padding:8px;
+            background:#0d131c;
+            border:1px solid #2d3849;
+            border-radius:9px;
+          }
+          #wd-box-organizer-v14 .wdorg-order-editor[hidden] {
+            display:none !important;
+          }
+          #wd-box-organizer-v14 .wdorg-order-list {
+            display:flex;
+            flex-direction:column;
+            gap:5px;
+          }
+          #wd-box-organizer-v14 .wdorg-order-row {
+            display:grid;
+            grid-template-columns:30px 22px minmax(150px,1fr) 34px 34px;
+            gap:5px;
+            align-items:center;
+            padding:6px 7px;
+            background:#171f2b;
+            border:1px solid #344154;
+            border-radius:7px;
+            color:#dbe5f2;
+            cursor:grab;
+            user-select:none;
+          }
+          #wd-box-organizer-v14 .wdorg-order-row.wd-dragging {
+            opacity:.45;
+          }
+          #wd-box-organizer-v14 .wdorg-order-row.wd-drop-before {
+            border-top-color:#73a9d2;
+            box-shadow:0 -2px 0 #73a9d2;
+          }
+          #wd-box-organizer-v14 .wdorg-order-row .wdorg-order-num {
+            color:#7f90a5;
+            font-variant-numeric:tabular-nums;
+            text-align:right;
+          }
+          #wd-box-organizer-v14 .wdorg-order-row .wdorg-drag {
+            color:#6f8197;
+            font-size:15px;
+            text-align:center;
+          }
+          #wd-box-organizer-v14 .wdorg-order-row b {
+            font-size:12px;
+            min-width:0;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+          }
+          #wd-box-organizer-v14 .wdorg-order-row button {
+            padding:3px 5px;
+            min-width:30px;
+            line-height:1.1;
+            border-radius:5px;
+          }
+          #wd-box-organizer-v14 .wdorg-order-actions {
+            margin-top:7px;
+            display:flex;
+            justify-content:flex-end;
+            gap:6px;
+          }
+          #wd-box-organizer-v14 .wdorg-explain {
+            margin-top:7px;
+            color:#92a2b6;
+            font-size:12px;
+          }
+          #wd-box-organizer-v14 .wdorg-explain summary {
+            cursor:pointer;
+            color:#b9c6d6;
+            user-select:none;
+          }
+          #wd-box-organizer-v14 .wdorg-explain > div {
+            margin-top:7px;
+            padding:8px 9px;
+            border:1px solid #2d3849;
+            border-radius:7px;
+            background:#0d131c;
+            line-height:1.45;
+          }
+          #wd-box-organizer-v14 .wdorg-preview { display:grid; grid-template-columns:repeat(5,minmax(110px,1fr)); gap:8px; padding:9px 12px; border-bottom:1px solid #2d3849; }
+          #wd-box-organizer-v14 .wdorg-card { background:#171f2b; border:1px solid #2d3849; border-radius:8px; padding:8px 10px; }
+          #wd-box-organizer-v14 .wdorg-card small { display:block; color:#8fa0b5; }
+          #wd-box-organizer-v14 .wdorg-card b { display:block; margin-top:2px; font-size:16px; color:#fff; }
+
           #wd-box-organizer-v14 .wdorg-field { display:flex; flex-direction:column; gap:3px; color:#9ba9bc; }
           #wd-box-organizer-v14 .wdorg-field input { width:100px; background:#0b1017; border:1px solid #344154; color:#fff; border-radius:7px; padding:7px 9px; }
-          #wd-box-organizer-v14 .wdorg-cats { padding:7px 12px; border-bottom:1px solid #2d3849; color:#9ba9bc; white-space:nowrap; overflow:auto; }
           #wd-box-organizer-v14 .wdorg-tablewrap { flex:1 1 auto; min-height:0; overflow-x:auto; overflow-y:scroll; scrollbar-gutter:stable; }
           #wd-box-organizer-v14 table { width:100%; border-collapse:collapse; }
           #wd-box-organizer-v14 th { position:sticky; top:0; z-index:2; background:#19212d; color:#aeb9c8; text-align:left; padding:8px; border-bottom:1px solid #344154; white-space:nowrap; }
@@ -4068,6 +4602,7 @@
           #wd-box-organizer-v14 .wdorg-info { color:#9bc8ff; }
           @media(max-width:760px){
             #wd-box-organizer-v14{right:6px;bottom:6px;width:calc(100vw - 12px);height:90vh;max-height:90vh;}
+            #wd-box-organizer-v14 .wdorg-preview{grid-template-columns:repeat(2,minmax(120px,1fr));}
             #wd-box-organizer-v14 .wdorg-head{flex-wrap:wrap;}
             #wd-box-organizer-v14 .wdorg-foot{grid-template-columns:1fr;}
             #wd-box-organizer-v14 #wd-organizer-log{border-left:0;border-top:1px solid #2d3849;}
@@ -4080,8 +4615,8 @@
         panel.innerHTML = `
           <div class="wdorg-head">
             <div class="wdorg-title">
-              <b>Worlddex Box Organizer v1.11.1</b>
-              <small>Plan → review → move → rename. Drag the header to move it.</small>
+              <b>Organize Boxes</b>
+              <small>Choose how you want your PC arranged, preview the result, then apply it.</small>
             </div>
             <div class="wdorg-stats">
               <span>Pokémon <b id="wd-organizer-total">0</b></span>
@@ -4089,42 +4624,98 @@
               <span>Boxes <b id="wd-organizer-used">0</b></span>
             </div>
             <div class="wdorg-spacer"></div>
-            <button id="wd-organizer-refresh">Reload data</button>
-            <button id="wd-organizer-specials">Specials</button>
-            <button id="wd-organizer-dex">Dex tasks</button>
-            <button id="wd-organizer-decisions">Breeding setup</button>
-            <button id="wd-organizer-back">Cleaner</button>
+            <button id="wd-organizer-refresh">Reload</button>
+            <button id="wd-organizer-specials">Special Pokémon</button>
+            <button id="wd-organizer-dex">Pokédex Tasks</button>
+            <button id="wd-organizer-decisions">Breeding Plans</button>
+            <button id="wd-organizer-back">Clean Up</button>
             <button id="wd-organizer-collapse">Minimize</button>
             <button id="wd-organizer-close">×</button>
           </div>
           <div class="wdorg-body" id="wd-organizer-body">
             <div class="wdorg-tools">
-              <label class="wdorg-field">Available boxes
+              <label class="wdorg-field">Boxes
                 <input id="wd-organizer-boxes" type="number" min="1" max="100" value="${initialBoxes}">
               </label>
-              <label class="wdorg-field">Slots / box
+              <label class="wdorg-field">Max Pokémon / box
                 <input id="wd-organizer-cap" type="number" min="1" max="99" value="${initialCap}">
               </label>
-              <label class="wdorg-field">AUTO own box at
-                <input id="wd-organizer-ownmin" type="number" min="1" max="100" value="12" title="AUTO families at or above this size are considered for a private box, but only if the full 32-box plan still fits.">
+              <label class="wdorg-field">Private breeding-family box from
+                <input id="wd-organizer-ownmin" type="number" min="1" max="100" value="12" title="Only used when Breeding Plans are enabled for organization.">
               </label>
-              <button id="wd-organizer-rebuild">Rebuild plan</button>
-              <button id="wd-organizer-export">Export plan TSV</button>
+              <button id="wd-organizer-rebuild">Update preview</button>
+              <button id="wd-organizer-export">Export plan</button>
               <div style="flex:1"></div>
               <button id="wd-organizer-apply">APPLY ORGANIZATION</button>
             </div>
-            <div class="wdorg-cats" id="wd-organizer-cats"></div>
+            <div class="wdorg-options">
+              <div class="wdorg-options-top">
+                <b>Organization style</b>
+                <select id="wd-organizer-preset">
+                  <option value="minimal">Minimal</option>
+                  <option value="recommended">Recommended</option>
+                  <option value="functional">Functional</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <b style="margin-left:10px">Layout priority</b>
+                <select id="wd-organizer-layout-priority">
+                  <option value="balanced">Balanced (recommended)</option>
+                  <option value="min_moves">Minimize moves</option>
+                  <option value="ordered">Keep boxes ordered</option>
+                </select>
+              </div>
+              <div class="wdorg-checks">
+                <label><input id="wd-org-trained" type="checkbox"> Keep trained Pokémon together</label>
+                <label class="sub"><input id="wd-org-trained-ev" type="checkbox"> EV-trained</label>
+                <label class="sub"><input id="wd-org-trained-level" type="checkbox"> Level <input id="wd-org-level-min" type="number" min="1" max="100" value="80">+</label>
+                <label><input id="wd-org-breeders" type="checkbox"> Use Breeding Plans when organizing</label>
+                <label><input id="wd-org-sync" type="checkbox"> Keep Synchronize Pokémon together</label>
+                <label><input id="wd-org-dex" type="checkbox"> Keep Pokédex tasks together</label>
+                <label><input id="wd-org-special" type="checkbox"> Keep Special Pokémon together</label>
+                <label><input id="wd-org-favourites" type="checkbox"> Keep favourites where they are</label>
+                <label><input id="wd-org-rename" type="checkbox"> Rename boxes automatically</label>
+              </div>
+              <div class="wdorg-orderbar">
+                <button id="wd-organizer-order-toggle">Customize box order</button>
+                <span class="wdorg-order-summary" id="wd-organizer-order-summary"></span>
+              </div>
+
+              <div class="wdorg-order-editor" id="wd-organizer-order-editor" hidden>
+                <div class="wdorg-order-list" id="wd-organizer-category-order"></div>
+                <div class="wdorg-order-actions">
+                  <button id="wd-organizer-order-reset" title="Restore the default category order">Reset order</button>
+                  <button id="wd-organizer-order-done">Done</button>
+                </div>
+              </div>
+
+              <details class="wdorg-explain">
+                <summary>What do these options mean?</summary>
+                <div>
+                  <b>Organization style:</b> Minimal keeps fewer separate groups; Recommended is the normal default; Functional separates every useful group.<br>
+                  <b>Layout priority:</b> all three modes use the section order you choose. Balanced keeps that order while allowing gaps to save moves. Keep boxes ordered follows it as tightly as possible from the earliest boxes. Minimize moves treats it as a preference and may bend it only when doing so avoids extra moves.<br>
+                  <b>Customize box order:</b> the editor only shows sections that actually exist in the current preview, so a Minimal setup stays minimal instead of showing unused categories.<br>
+                  <b>Breeding Plans:</b> when disabled, breeding families are treated like normal collection Pokémon for organization. Cleaner protection is unchanged.<br>
+                  <b>Battle Ready:</b> a Pokémon qualifies through the selected EV or level rules.<br>
+                  These settings only change placement. They never make a protected Pokémon eligible for release.
+                </div>
+              </details>
+            </div>
+            <div class="wdorg-preview">
+              <div class="wdorg-card"><small>Pokémon checked</small><b id="wd-org-preview-total">0</b></div>
+              <div class="wdorg-card"><small>Already in place</small><b id="wd-org-preview-stay">0</b></div>
+              <div class="wdorg-card"><small>Will be moved</small><b id="wd-org-preview-move">0</b></div>
+              <div class="wdorg-card"><small>Boxes used</small><b id="wd-org-preview-boxes">0</b></div>
+              <div class="wdorg-card"><small>Boxes to rename</small><b id="wd-org-preview-renames">0</b></div>
+            </div>
             <div class="wdorg-tablewrap">
               <table>
-                <thead><tr><th>Box</th><th>Proposed name</th><th>Count</th><th>Categories</th><th>Species grouped here</th></tr></thead>
+                <thead><tr><th>Box</th><th>Box name</th><th>Count</th><th>Purpose</th><th>Pokémon here</th></tr></thead>
                 <tbody id="wd-organizer-tbody"></tbody>
               </table>
             </div>
             <div class="wdorg-foot">
               <div class="wdorg-note">
-                <b>Box names:</b> if a box contains a single evolution family, its physical PC name is only that Pokémon/family name (e.g. <b>Charmander</b>, <b>Dratini</b>, <b>Pancham</b>). BREED NOW / TO-BE / DONE are workflow states and are not appended to single-family box names.<br>
-                <b>32-box smart layout:</b> OWN BOX is absolute; CAN MIX is allowed to share; AUTO gives private boxes first to BREED NOW / TO-BE projects and then to larger families while the complete plan still fits. DONE / NO BREED do not create a category of their own. The threshold above only makes a family eligible — it never forces a 33rd box. Empty space in private boxes is intentional.<br>
-                <b>Family integrity:</b> a family that shares still moves as one indivisible block, so Abra/Kadabra/Alakazam or Ralts/Kirlia/Gardevoir/Gallade do not get scattered across multiple random boxes. Only families larger than 100 must span boxes. SPECIAL, one-per-nature SYNCRO, and RELEASE remain functional exceptions. Worlddex exposes box movement but no slot index, so exact tile order inside a box cannot be forced. Move API capacity: <b>100</b>; boxes: <b>32</b>. The live /api/box/move endpoint reports <code>max:100</code>. <b>Stable placement</b> maps logical groups back onto the physical boxes with the highest existing overlap, minimizing repeat moves. v1.11.1 hard-clamps planning to 100, audits live→target occupancy before starting, and re-checks destination occupancy immediately before every move.
+                <b>Safe:</b> Organize Boxes never releases Pokémon. It only moves them and optionally renames boxes.
               </div>
               <div id="wd-organizer-log"></div>
             </div>
@@ -4132,10 +4723,161 @@
         `;
         managerAttachView(panel, '.wdorg-head');
 
+
+        function organizerVisibleSectionOrder(plan=organizerPlan, prefs=organizerPrefsState) {
+          const full=normalizeOrganizerSectionOrder(prefs.categoryOrder);
+          const active=Array.isArray(plan?.activeSections) && plan.activeSections.length
+            ? new Set(plan.activeSections)
+            : null;
+
+          if(!active) return full;
+          return full.filter(key=>active.has(key));
+        }
+
+        function mergeOrganizerVisibleOrder(visibleOrder, prefs=organizerPrefsState, plan=organizerPlan) {
+          const full=normalizeOrganizerSectionOrder(prefs.categoryOrder);
+          const active=new Set(
+            Array.isArray(plan?.activeSections) && plan.activeSections.length
+              ? plan.activeSections
+              : visibleOrder
+          );
+
+          const normalizedVisible=visibleOrder
+            .map(String)
+            .filter(key=>active.has(key));
+
+          let cursor=0;
+          return full.map(key=>{
+            if(!active.has(key)) return key;
+            return normalizedVisible[cursor++] || key;
+          });
+        }
+
+        function renderOrganizerPreferences() {
+          const p=organizerPrefsState;
+          const setChecked=(id,v)=>{const el=document.getElementById(id);if(el)el.checked=!!v;};
+          setChecked('wd-org-trained',p.keepTrainedTogether); setChecked('wd-org-trained-ev',p.trainedEv); setChecked('wd-org-trained-level',p.trainedLevel);
+          setChecked('wd-org-breeders',p.keepBreedersTogether); setChecked('wd-org-sync',p.keepSynchronizeTogether); setChecked('wd-org-dex',p.keepDexTasksTogether);
+          setChecked('wd-org-special',p.keepSpecialsTogether); setChecked('wd-org-favourites',p.keepFavouritesInPlace); setChecked('wd-org-rename',p.renameBoxes);
+          const level=document.getElementById('wd-org-level-min'); if(level) level.value=String(p.trainedLevelMin||80);
+          ['wd-org-trained-ev','wd-org-trained-level','wd-org-level-min'].forEach(id=>{
+            const el=document.getElementById(id);
+            if(el) el.disabled=!p.keepTrainedTogether;
+          });
+
+          const ownMin=document.getElementById('wd-organizer-ownmin');
+          if(ownMin){
+            ownMin.disabled=!p.keepBreedersTogether;
+            ownMin.title=p.keepBreedersTogether
+              ? 'Larger breeding families can receive their own box when there is enough room.'
+              : 'Ignored because Breeding Plans are not being used for organization.';
+          }
+
+          const preset=document.getElementById('wd-organizer-preset');
+          if(preset) preset.value=p.preset||'custom';
+          const layout=document.getElementById('wd-organizer-layout-priority');
+          if(layout) layout.value=p.layoutPriority||'balanced';
+
+          const order=organizerVisibleSectionOrder(organizerPlan,p);
+
+          const orderSummary=document.getElementById('wd-organizer-order-summary');
+          if(orderSummary){
+            const labels=order.map(key=>ORGANIZER_SECTION_LABEL[key]||key);
+            const shown=labels.slice(0,4).join(' → ');
+
+            orderSummary.textContent=labels.length
+              ? (labels.length>4 ? `${shown} → +${labels.length-4} more` : shown)
+              : 'No active sections';
+
+            orderSummary.title=p.layoutPriority==='min_moves'
+              ? `Preferred section order (Minimize moves may bend it): ${labels.join(' → ')}`
+              : `Section order: ${labels.join(' → ')}`;
+          }
+
+          const orderWrap=document.getElementById('wd-organizer-category-order');
+          if(orderWrap){
+            orderWrap.innerHTML=order.length
+              ? order.map((key,index)=>{
+                  const label=ORGANIZER_SECTION_LABEL[key]||key;
+                  return `<div class="wdorg-order-row" draggable="true" data-order-key="${escAttr(key)}">
+                    <span class="wdorg-order-num">${index+1}</span>
+                    <span class="wdorg-drag" title="Drag to reorder">☰</span>
+                    <b>${escHtml(label)}</b>
+                    <button data-order-move="-1" ${index===0?'disabled':''} title="Move earlier">↑</button>
+                    <button data-order-move="1" ${index===order.length-1?'disabled':''} title="Move later">↓</button>
+                  </div>`;
+                }).join('')
+              : `<div style="color:#8292a7;padding:6px 3px">No active sections in this preview.</div>`;
+          }
+        }
+        function readOrganizerPreferencesFromUI(markCustom=true) {
+          const checked=id=>!!document.getElementById(id)?.checked;
+          organizerPrefsState=normalizeOrganizerPrefs({...organizerPrefsState,
+            keepTrainedTogether:checked('wd-org-trained'), trainedEv:checked('wd-org-trained-ev'), trainedLevel:checked('wd-org-trained-level'),
+            trainedLevelMin:Number(document.getElementById('wd-org-level-min')?.value||80), keepBreedersTogether:checked('wd-org-breeders'),
+            keepSynchronizeTogether:checked('wd-org-sync'), keepDexTasksTogether:checked('wd-org-dex'), keepSpecialsTogether:checked('wd-org-special'),
+            keepFavouritesInPlace:checked('wd-org-favourites'), renameBoxes:checked('wd-org-rename'),
+            layoutPriority:String(document.getElementById('wd-organizer-layout-priority')?.value || 'balanced'),
+            categoryOrder:organizerPrefsState.categoryOrder,
+            preset:markCustom?'custom':organizerPrefsState.preset});
+          saveOrganizerPrefs();
+          organizerPlan=null;
+          rebuildOrganizerPlanFromUI();
+          renderOrganizerPreferences();
+        }
+        renderOrganizerPreferences();
+
+        function applyOrganizerCategoryOrder(nextVisibleOrder, source='manual') {
+          const currentVisible=organizerVisibleSectionOrder(
+            organizerPlan,
+            organizerPrefsState
+          );
+
+          const requested=nextVisibleOrder
+            .map(String)
+            .filter(key=>currentVisible.includes(key));
+
+          const merged=mergeOrganizerVisibleOrder(
+            requested,
+            organizerPrefsState,
+            organizerPlan
+          );
+
+          organizerPrefsState=normalizeOrganizerPrefs({
+            ...organizerPrefsState,
+            categoryOrder:merged,
+            // Keep the layout mode selected by the player.
+            preset:'custom'
+          });
+
+          saveOrganizerPrefs();
+
+          organizerPlan=null;
+          const plan=rebuildOrganizerPlanFromUI();
+          renderOrganizerPreferences();
+
+          if(plan){
+            updateOrganizerApplyButton(plan,false);
+
+            const modeLabel=organizerPrefsState.layoutPriority==='ordered'
+              ? 'Keep boxes ordered'
+              : organizerPrefsState.layoutPriority==='min_moves'
+                ? 'Minimize moves'
+                : 'Balanced';
+
+            logOrganizer(
+              `Section order updated · ${modeLabel} · ${plan.moves.length} move(s).`,
+              'info'
+            );
+          }
+
+          return plan;
+        }
+
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.11.1] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.15] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -4144,6 +4886,107 @@
 
         bindOrganizer('wd-organizer-rebuild', 'click', rebuildOrganizerPlanFromUI);
         bindOrganizer('wd-organizer-ownmin', 'change', rebuildOrganizerPlanFromUI);
+        bindOrganizer('wd-organizer-preset', 'change', e => {
+          const name=String(e.currentTarget.value||'recommended'); if(name==='custom') return;
+          setOrganizerPreset(name);
+          organizerPlan=null;
+          rebuildOrganizerPlanFromUI();
+          renderOrganizerPreferences();
+        });
+        ['wd-org-trained','wd-org-trained-ev','wd-org-trained-level','wd-org-breeders','wd-org-sync','wd-org-dex','wd-org-special','wd-org-favourites','wd-org-rename'].forEach(id => bindOrganizer(id,'change',()=>readOrganizerPreferencesFromUI(true)));
+        bindOrganizer('wd-org-level-min','change',()=>readOrganizerPreferencesFromUI(true));
+        bindOrganizer('wd-organizer-layout-priority','change',()=>readOrganizerPreferencesFromUI(true));
+
+        bindOrganizer('wd-organizer-order-toggle','click',()=>{
+          const editor=document.getElementById('wd-organizer-order-editor');
+          const btn=document.getElementById('wd-organizer-order-toggle');
+          if(!editor) return;
+          const opening=editor.hidden;
+          editor.hidden=!opening;
+          if(btn) btn.textContent=opening ? 'Hide box order' : 'Customize box order';
+        });
+
+        bindOrganizer('wd-organizer-order-done','click',()=>{
+          const editor=document.getElementById('wd-organizer-order-editor');
+          const btn=document.getElementById('wd-organizer-order-toggle');
+          if(editor) editor.hidden=true;
+          if(btn) btn.textContent='Customize box order';
+        });
+
+        bindOrganizer('wd-organizer-category-order','click',e=>{
+          const btn=e.target.closest('button[data-order-move]');
+          if(!btn) return;
+
+          const row=btn.closest('[data-order-key]');
+          const key=row?.dataset?.orderKey;
+          const delta=Number(btn.dataset.orderMove||0);
+          if(!key || !delta) return;
+
+          const order=organizerVisibleSectionOrder(organizerPlan,organizerPrefsState);
+          const from=order.indexOf(key);
+          const to=from+delta;
+          if(from<0 || to<0 || to>=order.length) return;
+
+          [order[from],order[to]]=[order[to],order[from]];
+          applyOrganizerCategoryOrder(order,'button');
+        });
+
+        {
+          const orderEl=document.getElementById('wd-organizer-category-order');
+          let draggedKey=null;
+
+          orderEl?.addEventListener('dragstart',e=>{
+            const row=e.target.closest('[data-order-key]');
+            if(!row) return;
+            draggedKey=row.dataset.orderKey;
+            row.classList.add('wd-dragging');
+            try { e.dataTransfer.effectAllowed='move'; } catch {}
+          });
+
+          orderEl?.addEventListener('dragend',()=>{
+            orderEl.querySelectorAll('.wd-dragging,.wd-drop-before')
+              .forEach(el=>el.classList.remove('wd-dragging','wd-drop-before'));
+            draggedKey=null;
+          });
+
+          orderEl?.addEventListener('dragover',e=>{
+            const row=e.target.closest('[data-order-key]');
+            if(!row || !draggedKey || row.dataset.orderKey===draggedKey) return;
+            e.preventDefault();
+            orderEl.querySelectorAll('.wd-drop-before')
+              .forEach(el=>el.classList.remove('wd-drop-before'));
+            row.classList.add('wd-drop-before');
+            try { e.dataTransfer.dropEffect='move'; } catch {}
+          });
+
+          orderEl?.addEventListener('drop',e=>{
+            const target=e.target.closest('[data-order-key]');
+            if(!target || !draggedKey) return;
+            e.preventDefault();
+
+            const order=organizerVisibleSectionOrder(organizerPlan,organizerPrefsState);
+            const from=order.indexOf(draggedKey);
+            let to=order.indexOf(target.dataset.orderKey);
+            if(from<0 || to<0 || from===to) return;
+
+            const [moved]=order.splice(from,1);
+            if(from<to) to--;
+            order.splice(to,0,moved);
+
+            applyOrganizerCategoryOrder(order,'drag');
+          });
+        }
+
+        bindOrganizer('wd-organizer-order-reset','click',()=>{
+          const active=new Set(
+            organizerVisibleSectionOrder(organizerPlan,organizerPrefsState)
+          );
+          const defaultVisible=ORGANIZER_SECTION_DEFAULT_ORDER
+            .filter(key=>active.has(key));
+
+          applyOrganizerCategoryOrder(defaultVisible,'reset');
+        });
+
         bindOrganizer('wd-organizer-refresh', 'click', () => window.__WORLDDEX_BOX_MANAGER_REFRESH?.());
         bindOrganizer('wd-organizer-specials', 'click', mountSpecialPanel);
         bindOrganizer('wd-organizer-dex', 'click', mountDexTaskPanel);
@@ -4160,14 +5003,8 @@
 
         organizerPlan = null;
         const initialPlan = rebuildOrganizerPlanFromUI();
-        const apply = document.getElementById('wd-organizer-apply');
-        if (apply && initialPlan) {
-          apply.textContent = `APPLY ORGANIZATION (${initialPlan.moves.length} moves)`;
-          apply.disabled = initialPlan.moves.length === 0;
-        } else if (apply) {
-          apply.textContent = 'APPLY ORGANIZATION';
-          apply.disabled = true;
-        }
+        updateOrganizerApplyButton(initialPlan, false);
+        renderOrganizerPreferences();
         if (initialPlan) {
           logOrganizer(
             `Detected ${initialBoxes} box(es), ${initialCap} slots/box. Clean family-first plan uses ${initialPlan.usedBoxes} box(es) and requires ${initialPlan.moves.length} move(s).`,
@@ -4277,6 +5114,9 @@
             border-radius:7px;
             padding:7px 9px;
           }
+          #wd-box-cleaner-v13 .wdcl-preview {display:grid;grid-template-columns:repeat(3,minmax(130px,1fr));gap:8px;padding:9px 12px;border-bottom:1px solid #2d3849;}
+          #wd-box-cleaner-v13 .wdcl-card {background:#171f2b;border:1px solid #2d3849;border-radius:8px;padding:8px 10px;}
+          #wd-box-cleaner-v13 .wdcl-card small{display:block;color:#8fa0b5} #wd-box-cleaner-v13 .wdcl-card b{display:block;margin-top:2px;font-size:16px;color:#fff}
           #wd-box-cleaner-v13 .wdcl-tablewrap {
             flex:1 1 auto;
             min-height:0;
@@ -4359,8 +5199,8 @@
         panel.innerHTML = `
           <div class="wdcl-head">
             <div class="wdcl-title">
-              <b>Worlddex Box Manager v1.11.1</b>
-              <small>Review candidates before permanent release · drag header to move</small>
+              <b>Clean Up</b>
+              <small>Review duplicate Pokémon before removing anything.</small>
             </div>
             <div class="wdcl-stats">
               <span>Candidates <b id="wd-cleaner-candidate-count">${candidates.length}</b></span>
@@ -4369,24 +5209,25 @@
               <span>Errors <b id="wd-cleaner-error-count">0</b></span>
             </div>
             <div class="wdcl-spacer"></div>
-            <button id="wd-cleaner-refresh" title="Refetch /api/box, /api/state and /api/nursery, then rebuild everything">Reload data</button>
-            <button id="wd-cleaner-specials">Specials</button>
-            <button id="wd-cleaner-dex">Dex tasks</button>
-            <button id="wd-cleaner-decisions">Breeding setup</button>
-            <button id="wd-cleaner-organizer">Organizer</button>
+            <button id="wd-cleaner-refresh" title="Check your current PC again and refresh all cleanup rules">Reload</button>
+            <button id="wd-cleaner-specials">Special Pokémon</button>
+            <button id="wd-cleaner-dex">Pokédex Tasks</button>
+            <button id="wd-cleaner-decisions">Breeding Plans</button>
+            <button id="wd-cleaner-organizer">Organize Boxes</button>
             <button id="wd-cleaner-collapse">Minimize</button>
             <button id="wd-cleaner-close">×</button>
           </div>
           <div id="wd-cleaner-body">
             <div class="wdcl-tools">
-              <input id="wd-cleaner-filter" type="search" placeholder="Filter species / ID / nature / ability…">
+              <input id="wd-cleaner-filter" type="search" placeholder="Search Pokémon, nature or ability…">
               <span>Shown <b id="wd-cleaner-shown-count">${candidates.length}</b></span>
               <span style="color:#8e9caf;white-space:nowrap">↕ scroll list</span>
-              <button id="wd-cleaner-select-all">Select all shown</button>
-              <button id="wd-cleaner-select-none">Select none shown</button>
-              <button id="wd-cleaner-export">Export candidates TSV</button>
+              <button id="wd-cleaner-select-all">Select shown</button>
+              <button id="wd-cleaner-select-none">Clear shown</button>
+              <button id="wd-cleaner-export">Export list</button>
               <button id="wd-cleaner-release-btn">RELEASE SELECTED (${selectedCount()})</button>
             </div>
+            <div class="wdcl-preview"><div class="wdcl-card"><small>Pokémon checked</small><b id="wd-clean-preview-total">0</b></div><div class="wdcl-card"><small>Safe to keep</small><b id="wd-clean-preview-keep">0</b></div><div class="wdcl-card"><small>Cleanup candidates</small><b id="wd-clean-preview-candidates">0</b></div></div>
             <div class="wdcl-tablewrap">
               <table>
                 <thead>
@@ -4396,7 +5237,7 @@
                     <th>Pokémon</th>
                     <th>Nature / Ability</th>
                     <th>IVs</th>
-                    <th>Why candidate / kept instead</th>
+                    <th>Why it can be removed</th>
                     <th>State</th>
                   </tr>
                 </thead>
@@ -4404,11 +5245,7 @@
               </table>
             </div>
             <div class="wdcl-foot">
-              <div class="wdcl-note">
-                <b>Safety:</b> all candidates are re-validated against live <code>/api/box</code> before release.
-                You must type <code>RELEASE N</code> and confirm again. Releases are sequential (900 ms apart)
-                and stop on the first unexpected response. Use “Reload data” whenever the box changes: it refetches live box/state/nursery data and rebuilds the living-Dex core, Syncro core, Special policies, Dex tasks, Cleaner, breeding families and Organizer from scratch while preserving saved breeding decisions. Family modes can still recalculate immediately without releasing anything.
-              </div>
+              <div class="wdcl-note"><b>Nothing is removed automatically.</b> The list above is only a preview. You choose which Pokémon to remove and confirm the action before it starts. Protected Pokémon — including nicknamed Pokémon, high-IV Pokémon, favourites, trained Pokémon, breeding needs and Pokédex needs — are kept out of the cleanup list. If your PC changes while this window is open, press <b>Reload</b> before removing anything.</div>
               <div id="wd-cleaner-log"></div>
             </div>
           </div>
@@ -4436,7 +5273,7 @@
         });
 
         document.getElementById('wd-cleaner-export').addEventListener('click', () => {
-          download(candidates, 'worlddex_release_candidates_v1_11_1.tsv');
+          download(candidates, 'worlddex_cleanup_candidates_v1_15.tsv');
         });
 
         document.getElementById('wd-cleaner-release-btn').addEventListener('click', releaseSelected);
@@ -4462,7 +5299,7 @@
       }
 
       window.__BOX_CLEANER = {
-        version: '1.11',
+        version: '1.12',
         cfg: CFG,
         get rows() { return rows; },
         get candidates() { return candidates; },
@@ -4546,8 +5383,13 @@
         },
         buildOrganizerPlan,
         stableAssignOrganizerBoxes,
-        download: () => download(rows, 'worlddex_box_manager_v1_11_1_analysis.tsv'),
-        downloadCandidates: () => download(candidates, 'worlddex_release_candidates_v1_11_1.tsv'),
+        get organizerPreferences() { return organizerPrefs(); },
+        setOrganizerPreset,
+        setOrganizerPreferences(next={}) {
+          organizerPrefsState=normalizeOrganizerPrefs({...organizerPrefsState,...next,preset:'custom'}); saveOrganizerPrefs(); organizerPlan=null; return organizerPrefs();
+        },
+        download: () => download(rows, 'worlddex_box_manager_v1_15_analysis.tsv'),
+        downloadCandidates: () => download(candidates, 'worlddex_cleanup_candidates_v1_15.tsv'),
         descendants,
         rootsOf,
         groupsOf,
@@ -4556,7 +5398,7 @@
       };
 
       window.__BOX_ORGANIZER = {
-        version: '1.11',
+        version: '1.12',
         detectBoxCount,
         detectBoxCapacity,
         SERVER_BOX_MOVE_CAPACITY,
@@ -4603,7 +5445,7 @@
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.11.1] reload failed', err);
+      console.error('[Worlddex Box Manager v1.15] reload failed', err);
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
     } finally {
