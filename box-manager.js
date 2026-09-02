@@ -189,7 +189,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.15 — BREEDING DECISIONS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.15.1 — BREEDING DECISIONS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -569,7 +569,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.15
+      // FAMILY / BREEDING DECISIONS v1.15.1
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1298,7 +1298,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.15 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.15.1 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1350,7 +1350,7 @@
         return [cols.join('\t'), ...list.map(r => cols.map(c => clean(r[c])).join('\t'))].join('\n');
       }
 
-      function download(list = rows, filename = 'worlddex_box_manager_v1_15_analysis.tsv') {
+      function download(list = rows, filename = 'worlddex_box_manager_v1_15_1_analysis.tsv') {
         const blob = new Blob([toTSV(list)], { type:'text/tab-separated-values;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -1625,6 +1625,27 @@
             align-items:center;
             flex-wrap:wrap;
           }
+          #wd-manager-shell-v110 .wdm-nav-group {
+            display:flex;
+            gap:5px;
+            align-items:center;
+            flex-wrap:wrap;
+          }
+          #wd-manager-shell-v110 .wdm-nav-divider {
+            width:1px;
+            height:26px;
+            background:#39475b;
+            margin:0 3px;
+            flex:0 0 auto;
+          }
+          #wd-manager-shell-v110 .wdm-primary-action {
+            border-color:#53677f;
+            background:#243143;
+            font-weight:650;
+          }
+          #wd-manager-shell-v110 .wdm-primary-action:hover {
+            background:#2d3b50;
+          }
           #wd-manager-shell-v110 .wdm-spacer { flex:1; }
           #wd-manager-shell-v110 button {
             font:inherit;
@@ -1696,6 +1717,9 @@
             #wd-manager-shell-v110 .wdm-brand {
               min-width:150px;
             }
+            #wd-manager-shell-v110 .wdm-nav-divider {
+              display:none;
+            }
           }
         `;
         document.head.appendChild(style);
@@ -1706,15 +1730,20 @@
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.15</b>
+              <b>Worlddex Box Manager v1.15.1</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
-              <button data-manager-view="cleaner">Clean Up</button>
-              <button data-manager-view="specials">Special Pokémon</button>
-              <button data-manager-view="dex">Pokédex Tasks</button>
-              <button data-manager-view="breeding">Breeding Plans</button>
-              <button data-manager-view="organizer">Organize Boxes</button>
+              <div class="wdm-nav-group" aria-label="Actions">
+                <button class="wdm-primary-action" data-manager-view="organizer">Organize Boxes</button>
+                <button class="wdm-primary-action" data-manager-view="cleaner">Clean Up</button>
+              </div>
+              <span class="wdm-nav-divider" aria-hidden="true"></span>
+              <div class="wdm-nav-group" aria-label="Setup and review">
+                <button data-manager-view="breeding">Breeding Plans</button>
+                <button data-manager-view="dex">Pokédex Tasks</button>
+                <button data-manager-view="specials">Special Pokémon</button>
+              </div>
             </div>
             <div class="wdm-spacer"></div>
             <button id="wd-manager-refresh" title="Check your current PC again and refresh this section">Reload</button>
@@ -2389,7 +2418,7 @@
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.15) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.15.1) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -2636,7 +2665,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.15
+      // BOX ORGANIZER v1.15.1
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -3653,7 +3682,7 @@
         const blob = new Blob([organizerPlanTSV(plan)], { type:'text/tab-separated-values;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'worlddex_box_organizer_v1_15_plan.tsv';
+        a.download = 'worlddex_box_organizer_v1_15_1_plan.tsv';
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       }
@@ -4877,7 +4906,7 @@
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.15] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.15.1] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -5273,7 +5302,7 @@
         });
 
         document.getElementById('wd-cleaner-export').addEventListener('click', () => {
-          download(candidates, 'worlddex_cleanup_candidates_v1_15.tsv');
+          download(candidates, 'worlddex_cleanup_candidates_v1_15_1.tsv');
         });
 
         document.getElementById('wd-cleaner-release-btn').addEventListener('click', releaseSelected);
@@ -5388,8 +5417,8 @@
         setOrganizerPreferences(next={}) {
           organizerPrefsState=normalizeOrganizerPrefs({...organizerPrefsState,...next,preset:'custom'}); saveOrganizerPrefs(); organizerPlan=null; return organizerPrefs();
         },
-        download: () => download(rows, 'worlddex_box_manager_v1_15_analysis.tsv'),
-        downloadCandidates: () => download(candidates, 'worlddex_cleanup_candidates_v1_15.tsv'),
+        download: () => download(rows, 'worlddex_box_manager_v1_15_1_analysis.tsv'),
+        downloadCandidates: () => download(candidates, 'worlddex_cleanup_candidates_v1_15_1.tsv'),
         descendants,
         rootsOf,
         groupsOf,
@@ -5445,7 +5474,7 @@
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.15] reload failed', err);
+      console.error('[Worlddex Box Manager v1.15.1] reload failed', err);
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
     } finally {
