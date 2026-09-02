@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.15.1
+
+- Reordered the top navigation around how the manager is actually used.
+- **Organize Boxes** and **Clean Up** now appear first as the two main actions.
+- **Breeding Plans**, **Pokédex Tasks**, and **Special Pokémon** are grouped after them as setup / review sections.
+- Added a subtle visual divider between actions and configuration sections.
+- Gave the two primary action buttons slightly stronger visual emphasis without changing their behavior.
+- Responsive layouts hide the divider when the navigation wraps on narrow screens.
+
 ## v1.15
 
 - Category order is now customizable in **Balanced**, **Keep boxes ordered**, and **Minimize moves**.
