@@ -144,6 +144,29 @@ The **Organizer never releases Pokémon**.
 
 Even with these safeguards, this is an unofficial community tool. Review the cleanup list before confirming permanent releases.
 
+## Transparency
+
+The v1.15.1 source has been reviewed specifically for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
+
+What the script does:
+
+- reads Worlddex data from same-origin endpoints: `/api/box`, `/api/state`, `/api/nursery`, `/js/data.js` and `/js/pc.js`;
+- uses the currently logged-in Worlddex session through normal `same-origin` browser requests;
+- writes only to Worlddex endpoints used for the features you explicitly run: `/api/box/release`, `/api/box/move` and `/api/pc/box-name`;
+- stores Box Manager preferences locally in `localStorage`, such as breeding/special retention choices, Organizer settings, the active view and panel position.
+
+What is not present in v1.15.1:
+
+- no third-party URLs or external API calls;
+- no analytics, tracking, ads, webhooks or telemetry;
+- no cookie, password, auth-token or clipboard reads;
+- no WebSocket, `sendBeacon`, `XMLHttpRequest`, `postMessage`, IndexedDB or sessionStorage usage;
+- no downloaded remote payloads or obfuscated/base64-loaded code.
+
+One implementation detail worth disclosing: the script uses `window.eval` and a `Function(...)` fallback only to access or parse data constants from Worlddex's own same-origin JavaScript files. It does not use them to fetch or execute third-party code.
+
+The source is intentionally public and readable so anyone can inspect it or run an independent code review before using it. The SHA-256 check in GitHub Actions verifies that the published `box-manager.js` is the exact reviewed build; it is an integrity check, not a security certification.
+
 ## Status
 
 Actively prototyped and tested against the current Worlddex PC.
