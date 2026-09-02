@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "payload/**"
+      - "payload/v111-ready.flag"
       - ".github/workflows/build.yml"
 
 permissions:
@@ -19,7 +19,7 @@ jobs:
       - name: Rebuild standalone source
         shell: bash
         run: |
-          cat payload/part-*.b64 > /tmp/box-manager.b64
+          cat payload/v111/part-*.b64 > /tmp/box-manager.b64
           base64 -d /tmp/box-manager.b64 | gzip -d > box-manager.js
           node --check box-manager.js
           ACTUAL="$(sha256sum box-manager.js | awk '{print $1}')"
@@ -40,4 +40,4 @@ jobs:
           git commit -m "Build Box Manager v1.11.1"
           git push
 
-# Payload uploaded in six chunks; checksum above guards reconstruction.
+# v1.11.1 payload lives in deterministic gzip/base64 chunks under payload/v111/.
