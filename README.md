@@ -4,7 +4,7 @@ Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
 It adds a floating PC-management panel that helps you clean duplicates, track breeding and Pokédex needs, and organize large boxes without changing how Worlddex itself works.
 
-> **Current version: v1.15**
+> **Current version: v1.15.1**
 
 ## What it can do
 
@@ -105,9 +105,9 @@ The order editor only shows sections that are actually present in the current pr
 
 ## Interface
 
-The manager uses one floating window with these sections:
+The manager uses one floating window. The two main actions come first, followed by setup and review sections:
 
-`Clean Up | Special Pokémon | Pokédex Tasks | Breeding Plans | Organize Boxes`
+`Organize Boxes | Clean Up | Breeding Plans | Pokédex Tasks | Special Pokémon`
 
 The window can be:
 
@@ -154,6 +154,6 @@ Worlddex updates can require changes to this tool.
 
 The repository verifies `box-manager.js` with a JavaScript syntax check and an exact SHA-256 check.
 
-Current v1.15 SHA-256:
+Current v1.15.1 SHA-256:
 
-`73b1ebb970ae70fe19d2bdab85b95f51b4430cd204a204cc5b9577ce405c8aae`
+`91d124c9c3129ead0b84f2d4c511ba1baefe115696fc7124ca677fe19f114dc1`
