@@ -5,22 +5,43 @@ on:
   push:
     paths:
       - "box-manager.js"
+      - "payload/v115/**"
       - ".github/workflows/build.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Verify standalone source
+      - name: Build verified v1.15 source when payload is present
         shell: bash
         run: |
+          set -euo pipefail
+          EXPECTED="73b1ebb970ae70fe19d2bdab85b95f51b4430cd204a204cc5b9577ce405c8aae"
+
+          if compgen -G "payload/v115/part-*.b64" > /dev/null; then
+            cat payload/v115/part-*.b64 | base64 --decode | gzip --decompress > box-manager.js
+          fi
+
           node --check box-manager.js
           ACTUAL="$(sha256sum box-manager.js | awk '{print $1}')"
-          EXPECTED="67f9d7288b3042d30db529b716970c77c773e94e52da84fba5f2dc10f932aab7"
           echo "SHA256: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
+
+          if [ -d payload/v115 ]; then
+            rm -rf payload/v115
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add box-manager.js payload/v115
+
+            if ! git diff --cached --quiet; then
+              git commit -m "Build verified Box Manager v1.15"
+              git push
+            fi
+          fi
