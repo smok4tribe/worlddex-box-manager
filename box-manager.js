@@ -9,6 +9,7 @@
       'wd-box-cleaner-v13',
       'wd-box-organizer-v14',
       'wd-family-decisions-v15',
+      'wd-breed-planner-v116',
       'wd-special-manager-v18',
       'wd-dex-tasks-v16',
       'wd-manager-reloading-v151'
@@ -19,6 +20,7 @@
       'wd-box-cleaner-v13-style',
       'wd-box-organizer-v14-style',
       'wd-family-decisions-v15-style',
+      'wd-breed-planner-v116-style',
       'wd-special-manager-v18-style',
       'wd-dex-tasks-v16-style'
     ].forEach(id => document.getElementById(id)?.remove());
@@ -114,6 +116,19 @@
         return +(ivSum(m) / 186 * 100).toFixed(2);
       }
 
+      function ivPctLabel(m) {
+        const v = Number(ivPct(m));
+        if (!Number.isFinite(v)) return '—';
+        return `${v.toFixed(2).replace(/\.00$/,'').replace(/(\.\d)0$/,'$1')}%`;
+      }
+
+      function publicSpeciesName(name) {
+        // Worlddex exposes a few internal alternate-family labels such as
+        // "Dratini-Alt". Keep those identifiers internally, but never leak them
+        // into player-facing Box Manager text.
+        return String(name ?? '').replace(/-Alt$/i, '');
+      }
+
       function ivString(m) {
         return STATS.map(k => Number(m?.ivs?.[k] || 0)).join('/');
       }
@@ -189,7 +204,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.15.1 — BREEDING DECISIONS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.17.1 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -359,6 +374,28 @@
 
       const allOwned = [...allOwnedMap.values()];
       const dittos = allOwned.filter(m => Number(m.dex) === 132);
+
+      // Breed Planner needs to know where an owned Pokémon currently lives.
+      // Nursery Pokémon are NOT returned by /api/box, so they are deliberately
+      // merged into allOwned above but kept unavailable for normal box actions.
+      const boxOwnedIds = new Set(mons.map(m => Number(m.id)).filter(Number.isFinite));
+      const teamOwnedIds = new Set((state.team || []).map(m => Number(m.id)).filter(Number.isFinite));
+      const nurseryHeld = Array.isArray(nurseryRes.held) ? nurseryRes.held : [];
+      const nurseryOwnedIds = new Set(nurseryHeld.map(m => Number(m.id)).filter(Number.isFinite));
+
+      function ownedLocation(m) {
+        const id = Number(m?.id);
+        if (nurseryOwnedIds.has(id)) return 'NURSERY';
+        if (teamOwnedIds.has(id)) return 'TEAM';
+        if (boxOwnedIds.has(id)) return 'BOX';
+        return 'OTHER';
+      }
+
+      function pairIsCurrentNurseryPair(aId, bId) {
+        const a = Number(aId), b = Number(bId);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+        return nurseryOwnedIds.has(a) && nurseryOwnedIds.has(b) && nurseryOwnedIds.size === 2;
+      }
 
       function hasBreedingPartner(m) {
         if (!canBreedSpecies(m)) return false;
@@ -569,7 +606,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.15.1
+      // FAMILY / BREEDING DECISIONS v1.17.1
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -744,6 +781,64 @@
 
       const familyDecisions = loadFamilyDecisions();
 
+      // Saved Breed Planner targets are separate from family cleanup settings,
+      // but saving a plan automatically promotes the family to TO-BE or BREED NOW.
+      const BREED_PLAN_STORE_KEY = 'worlddex.boxManager.v1.16.breedPlans';
+
+      function loadBreedPlans() {
+        let raw = {};
+        try { raw = JSON.parse(localStorage.getItem(BREED_PLAN_STORE_KEY) || '{}') || {}; } catch {}
+        const out = new Map();
+        for (const [key, plan] of Object.entries(raw)) {
+          if (!plan || typeof plan !== 'object') continue;
+          out.set(key, plan);
+        }
+        return out;
+      }
+
+      const breedPlans = loadBreedPlans();
+
+      function saveBreedPlans() {
+        const obj = {};
+        for (const [key, plan] of breedPlans.entries()) obj[key] = plan;
+        try { localStorage.setItem(BREED_PLAN_STORE_KEY, JSON.stringify(obj)); } catch {}
+      }
+
+      function breedPlanNurseryActive(plan) {
+        if (!plan || nurseryHeld.length !== 2) return false;
+        const [a,b] = nurseryHeld;
+        const matchesProducer = (producer, partner) => {
+          if (!producer || !partner) return false;
+          if (familyKeyOf(producer) !== String(plan.familyKey || '')) return false;
+          if (Number(partner.dex) === 132) return canBreedSpecies(producer);
+          return producer.gender === 'f' && partner.gender === 'm' && shareEggGroup(producer, partner);
+        };
+        return matchesProducer(a,b) || matchesProducer(b,a);
+      }
+
+      function breedPlanSuggestedMode(plan) {
+        return breedPlanNurseryActive(plan) ? FAMILY_MODE.BREED : FAMILY_MODE.TO_BE;
+      }
+
+      function collectBreedPlanProtectedIds() {
+        const ids = new Set();
+        for (const [key, plan] of breedPlans.entries()) {
+          const mode = familyDecision(key).mode;
+          if (mode !== FAMILY_MODE.BREED && mode !== FAMILY_MODE.TO_BE) continue;
+          for (const id of [plan?.parentAId, plan?.parentBId, ...(plan?.protectedIds || [])]) {
+            const n = Number(id);
+            if (Number.isFinite(n)) ids.add(n);
+          }
+          for (const step of (plan?.pathSteps || [])) {
+            for (const id of [step?.parentAId, step?.parentBId, step?.donorId]) {
+              const n = Number(id);
+              if (Number.isFinite(n)) ids.add(n);
+            }
+          }
+        }
+        return ids;
+      }
+
       function saveFamilyDecisions() {
         const obj = {};
         for (const [key, d] of familyDecisions.entries()) {
@@ -754,6 +849,30 @@
           };
         }
         try { localStorage.setItem(FAMILY_STORE_KEY, JSON.stringify(obj)); } catch {}
+      }
+
+      function syncBreedPlanFamilyModes(persist = true) {
+        let changed = false;
+        let plansChanged = false;
+        for (const [key, plan] of breedPlans.entries()) {
+          if (!plan || plan.autoManagedMode === false) continue;
+          const d = familyDecision(key);
+          const suggested = breedPlanSuggestedMode(plan);
+          // Existing v1.16 projects could remain AUTO after reload. Treat
+          // AUTO/TO-BE/BREED as planner-managed states; explicit DONE/NO-BREED/
+          // KEEP-ALL choices remain user overrides.
+          if ([FAMILY_MODE.AUTO, FAMILY_MODE.TO_BE, FAMILY_MODE.BREED].includes(d.mode) && d.mode !== suggested) {
+            familyDecisions.set(key, { ...d, mode:suggested });
+            changed = true;
+          }
+          if (plan.lastAutoMode !== suggested) {
+            breedPlans.set(key, { ...plan, lastAutoMode:suggested, autoManagedMode:true });
+            plansChanged = true;
+          }
+        }
+        if (persist && changed) saveFamilyDecisions();
+        if (persist && plansChanged) saveBreedPlans();
+        return changed || plansChanged;
       }
 
       function familyDecision(mOrKey) {
@@ -1148,6 +1267,7 @@
       let retentionCore = { ids:new Set(), why:new Map() };
       let dexTaskCore = { evoParents:new Map(), breedParents:new Map(), tasks:[] };
       let activeEggGroups = new Set();
+      let activeBreedPlanProtectedIds = new Set();
 
       const selectedIds = new Set();
       const releasedIds = new Set();
@@ -1169,6 +1289,7 @@
 
       function rebuildAnalysis(resetSelection = true) {
         activeEggGroups = activeBreedingEggGroups();
+        activeBreedPlanProtectedIds = collectBreedPlanProtectedIds();
         syncUtilityCore = computeSyncUtilityCore();
         retentionCore = computeRetentionCore();
         livingDexCore = computeLivingDexCore();
@@ -1195,6 +1316,8 @@
             reason = 'FAMILY_KEEP_ALL';
           } else if (hard.reasons.length) {
             reason = hard.reasons.join(', ');
+          } else if (activeBreedPlanProtectedIds.has(Number(m.id))) {
+            reason = 'BREED_PLAN_RESERVED';
           } else if (dexTaskCore.evoParents.has(Number(m.id))) {
             reason = 'DEX_TASK_EVOLVE_' + dexTaskCore.evoParents.get(Number(m.id))
               .map(d => dexToName.get(Number(d)) || `#${d}`).join('+');
@@ -1298,7 +1421,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.15.1 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.17.1 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1401,6 +1524,13 @@
       function setFamilyDecision(key, patch) {
         const current = familyDecision(key);
         familyDecisions.set(key, { ...current, ...patch });
+        if (patch && Object.prototype.hasOwnProperty.call(patch, 'mode') && breedPlans.has(key)) {
+          // A manual status choice (DONE / NO BREED / etc.) takes precedence over
+          // the automatic TO-BE ↔ BREED NOW nursery sync until the plan is saved again.
+          const plan = breedPlans.get(key);
+          breedPlans.set(key, { ...plan, autoManagedMode:false });
+          saveBreedPlans();
+        }
         saveFamilyDecisions();
         rebuildAnalysis(true);
         organizerPlan = null;
@@ -1408,6 +1538,37 @@
         renderCandidateRows?.();
         renderFamilyDecisionRows?.();
       }
+
+      function removeBreedPlan(key) {
+        const plan = breedPlans.get(key);
+        if (!plan) return;
+        if (!confirm(`Remove the saved breeding project for ${publicSpeciesName(plan.targetName || familyLabelFromKey(key))}?
+
+No Pokémon will be moved or released.`)) return;
+
+        breedPlans.delete(key);
+        saveBreedPlans();
+
+        if (plan.autoManagedMode !== false) {
+          const current = familyDecision(key);
+          const previous = Object.values(FAMILY_MODE).includes(plan.previousFamilyMode)
+            ? plan.previousFamilyMode
+            : FAMILY_MODE.AUTO;
+          familyDecisions.set(key, { ...current, mode:previous });
+          saveFamilyDecisions();
+        }
+
+        rebuildAnalysis(true);
+        organizerPlan = null;
+        updatePanelCounts?.();
+        renderCandidateRows?.();
+        renderFamilyDecisionRows?.();
+        managerUpdateNav?.();
+      }
+
+      // Repair/synchronize projects saved by v1.16 as soon as live Nursery data
+      // is available. This fixes projects that incorrectly showed AUTO after reload.
+      syncBreedPlanFamilyModes(true);
 
       function escAttr(v) {
         return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1423,10 +1584,20 @@
         const retentionOpts = Object.entries(RETENTION_LABEL).map(([value,label]) => ({value,label}));
         tbody.innerHTML = list.map(f => {
           const d = familyDecision(f.key);
+          const savedPlan = breedPlans.get(f.key);
+          const autoMode = savedPlan && savedPlan.autoManagedMode !== false
+            ? breedPlanSuggestedMode(savedPlan)
+            : d.mode;
+          const modeForUi = savedPlan && savedPlan.autoManagedMode !== false && [FAMILY_MODE.AUTO,FAMILY_MODE.TO_BE,FAMILY_MODE.BREED].includes(d.mode)
+            ? autoMode
+            : d.mode;
+          const planSummary = savedPlan
+            ? `<small class="wdf-plan-target"><b>Target:</b> ${escAttr(publicSpeciesName(savedPlan.targetName || f.label))} · ${escAttr(savedPlan.nature || 'Any nature')} · ${escAttr(savedPlan.ivLabel || '')}<span class="wdf-plan-state">${escAttr(FAMILY_MODE_LABEL[modeForUi] || modeForUi)}</span></small><div class="wdf-plan-actions"><button data-open-breed-plan="${escAttr(f.key)}">Open planner</button><button class="wdf-danger" data-remove-breed-plan="${escAttr(f.key)}">Remove project</button></div>`
+            : '';
           return `<tr data-family="${escAttr(f.key)}">
-            <td><b>${escAttr(f.label)}</b><small>${escAttr([...f.species].sort().join(' → '))}</small></td>
+            <td><b>${escAttr(publicSpeciesName(f.label))}</b><small>${escAttr([...f.species].sort().map(publicSpeciesName).join(' → '))}</small>${planSummary}</td>
             <td>${f.mons.length}</td>
-            <td><select data-family-mode="${escAttr(f.key)}">${opts.map(o => `<option value="${o.value}" ${d.mode===o.value?'selected':''}>${escAttr(o.label)}</option>`).join('')}</select></td>
+            <td><select data-family-mode="${escAttr(f.key)}">${opts.map(o => `<option value="${o.value}" ${modeForUi===o.value?'selected':''}>${escAttr(o.label)}</option>`).join('')}</select></td>
             <td><select data-family-retention="${escAttr(f.key)}">${retentionOpts.map(o => `<option value="${o.value}" ${familyRetention(f.key)===o.value?'selected':''}>${escAttr(o.label)}</option>`).join('')}</select></td>
             <td><select data-family-boxpolicy="${escAttr(f.key)}">${boxOpts.map(o => `<option value="${o.value}" ${familyBoxPolicy(f.key)===o.value?'selected':''}>${escAttr(o.label)}</option>`).join('')}</select></td>
             <td><b>${f.candidateCount}</b></td>
@@ -1443,8 +1614,800 @@
         tbody.querySelectorAll('[data-family-boxpolicy]').forEach(el => el.addEventListener('change', () => {
           setFamilyDecision(el.dataset.familyBoxpolicy, { boxPolicy:el.value });
         }));
+        tbody.querySelectorAll('[data-open-breed-plan]').forEach(el => el.addEventListener('click', () => {
+          mountBreedPlannerPanel(el.dataset.openBreedPlan);
+        }));
+        tbody.querySelectorAll('[data-remove-breed-plan]').forEach(el => el.addEventListener('click', () => {
+          removeBreedPlan(el.dataset.removeBreedPlan);
+        }));
         const shown = document.getElementById('wd-family-shown');
         if (shown) shown.textContent = String(list.length);
+      }
+
+
+      // ─────────────────────────────────────────────────────────────
+      // BREED PLANNER v1.17.1
+      // Goal-first planner: choose the Pokémon you want, then rank legal pairs
+      // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
+      // preference because Worlddex warns that different species produce Eggs
+      // much more slowly. Until the exact nursery timing formula is confirmed,
+      // this is deliberately a ranking heuristic, NOT an advertised egg-odds %.
+      // ─────────────────────────────────────────────────────────────
+
+      const BREED_NATURES = [
+        'Hardy','Lonely','Brave','Adamant','Naughty',
+        'Bold','Docile','Relaxed','Impish','Lax',
+        'Timid','Hasty','Serious','Jolly','Naive',
+        'Modest','Mild','Quiet','Bashful','Rash',
+        'Calm','Gentle','Sassy','Careful','Quirky'
+      ];
+
+      const POWER_ITEMS = {
+        hp:  { id:'power-weight', label:'Power Weight', stat:'HP' },
+        atk: { id:'power-bracer', label:'Power Bracer', stat:'Atk' },
+        def: { id:'power-belt', label:'Power Belt', stat:'Def' },
+        spa: { id:'power-lens', label:'Power Lens', stat:'SpA' },
+        spd: { id:'power-band', label:'Power Band', stat:'SpD' },
+        spe: { id:'power-anklet', label:'Power Anklet', stat:'Spe' }
+      };
+
+      const BREED_ITEM_LABELS = {
+        '': 'No item',
+        'destiny-knot': 'Destiny Knot',
+        'everstone': 'Everstone',
+        ...Object.fromEntries(Object.values(POWER_ITEMS).map(x => [x.id, x.label]))
+      };
+
+      function breedPlannerGroupsForDex(dex) {
+        const direct = groupsOf({ dex:Number(dex) }).filter(g => g !== 'no-eggs');
+        if (direct.length) return direct;
+        const key = familyKeyFromDex(Number(dex));
+        const fromOwned = allOwned
+          .filter(m => familyKeyOf(m) === key)
+          .flatMap(m => groupsOf(m))
+          .filter(g => g !== 'no-eggs');
+        return [...new Set(fromOwned)];
+      }
+
+      function breedPlannerSpeciesOptions() {
+        const byDex = new Map();
+        for (const [name, dex] of nameToDex.entries()) {
+          const d = Number(dex);
+          if (!Number.isFinite(d) || d === 132 || byDex.has(d)) continue;
+          if (!breedPlannerGroupsForDex(d).length) continue;
+          byDex.set(d, publicSpeciesName(dexToName.get(d) || name));
+        }
+        return [...byDex.entries()]
+          .map(([dex,name]) => ({ dex, name:String(name) }))
+          .sort((a,b) => a.name.localeCompare(b.name));
+      }
+
+      function breedPlannerResolveTarget(raw) {
+        const q = String(raw || '').trim().toLowerCase();
+        if (!q) return null;
+        let dex = nameToDex.get(q);
+        if (!Number.isFinite(Number(dex)) && /^#?\d+$/.test(q)) dex = Number(q.replace('#',''));
+        dex = Number(dex);
+        if (!Number.isFinite(dex)) return null;
+        const groups = breedPlannerGroupsForDex(dex);
+        if (!groups.length) return { error:'This Pokémon does not appear breedable with the currently loaded Worlddex data.' };
+        const roots = rootsOf(dex).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+        const eggDex = roots[0] || dex;
+        return {
+          dex,
+          name:publicSpeciesName(dexToName.get(dex) || String(raw).trim()),
+          familyKey:familyKeyFromDex(dex),
+          eggDex,
+          eggName:publicSpeciesName(dexToName.get(eggDex) || `#${eggDex}`),
+          groups
+        };
+      }
+
+      function breedPlannerTargetFamilyOwned(target) {
+        return allOwned.filter(m => m?.ivs && familyKeyOf(m) === target.familyKey && Number(m.dex) !== 132 && canBreedSpecies(m));
+      }
+
+      function breedPlannerLegalPairs(target, desired={}) {
+        const familyOwned = breedPlannerTargetFamilyOwned(target);
+        const pairMap = new Map();
+        const add = (producer, partner) => {
+          if (!producer || !partner || Number(producer.id) === Number(partner.id)) return;
+          const key = [Number(producer.id), Number(partner.id)].sort((a,b)=>a-b).join('|');
+          if (pairMap.has(key)) return;
+          pairMap.set(key, { a:producer, b:partner });
+        };
+
+        // Female target-family parent + compatible male gives the desired family.
+        for (const female of familyOwned.filter(m => m.gender === 'f')) {
+          for (const male of allOwned) {
+            if (!male?.ivs || male.gender !== 'm' || Number(male.dex) === 132 || !canBreedSpecies(male)) continue;
+            if (shareEggGroup(female, male)) add(female, male);
+          }
+          for (const ditto of dittos.filter(m => m?.ivs)) add(female, ditto);
+        }
+
+        // Target-family male / genderless + Ditto can also produce the target family.
+        for (const producer of familyOwned.filter(m => m.gender !== 'f')) {
+          for (const ditto of dittos.filter(m => m?.ivs)) add(producer, ditto);
+        }
+        const pairs = [...pairMap.values()];
+        return desired.sameSpeciesOnly
+          ? pairs.filter(({a,b}) => Number(a?.dex) === Number(b?.dex) && Number(a?.dex) !== 132)
+          : pairs;
+      }
+
+      function breedPlannerAbilityScore(target, a, b, desiredAbility) {
+        const want = String(desiredAbility || '').trim().toLowerCase();
+        if (!want || want === 'any') return { score:0, text:'Any ability' };
+        const producer = Number(a.dex) === 132 ? b : a;
+        if (String(producer.ability || '').toLowerCase() === want) {
+          return { score:26, text:`${desiredAbility} already present on the species parent` };
+        }
+        if (String(b.ability || '').toLowerCase() === want) {
+          return { score:5, text:`${desiredAbility} exists on the partner only` };
+        }
+        return { score:-22, text:`${desiredAbility} is not present on the species parent` };
+      }
+
+      function breedPlannerItemSetups(a, b, nature, requiredStats) {
+        const setups = [{a:'',b:''},{a:'destiny-knot',b:''},{a:'',b:'destiny-knot'}];
+        const wantNature = String(nature || '') && nature !== 'Any';
+        const aNature = wantNature && String(a.nature || '').toLowerCase() === String(nature).toLowerCase();
+        const bNature = wantNature && String(b.nature || '').toLowerCase() === String(nature).toLowerCase();
+        if (aNature) setups.push({a:'everstone',b:''},{a:'everstone',b:'destiny-knot'});
+        if (bNature) setups.push({a:'',b:'everstone'},{a:'destiny-knot',b:'everstone'});
+
+        for (const stat of requiredStats) {
+          const power = POWER_ITEMS[stat];
+          if (!power) continue;
+          if (Number(a?.ivs?.[stat]) === 31) {
+            setups.push({a:power.id,b:''},{a:power.id,b:'destiny-knot'});
+            if (bNature) setups.push({a:power.id,b:'everstone'});
+          }
+          if (Number(b?.ivs?.[stat]) === 31) {
+            setups.push({a:'',b:power.id},{a:'destiny-knot',b:power.id});
+            if (aNature) setups.push({a:'everstone',b:power.id});
+          }
+        }
+        const seen = new Set();
+        return setups.filter(x => {
+          const k=`${x.a}|${x.b}`;
+          if (seen.has(k)) return false;
+          seen.add(k); return true;
+        });
+      }
+
+      function breedPlannerPowerStat(item) {
+        for (const [stat, meta] of Object.entries(POWER_ITEMS)) if (meta.id === item) return stat;
+        return null;
+      }
+
+      function breedPlannerScoreSetup(a, b, setup, desired) {
+        const required = desired.requiredStats;
+        const union = required.filter(stat => Number(a?.ivs?.[stat]) === 31 || Number(b?.ivs?.[stat]) === 31);
+        const overlap = required.filter(stat => Number(a?.ivs?.[stat]) === 31 && Number(b?.ivs?.[stat]) === 31);
+        const missing = required.filter(stat => Number(a?.ivs?.[stat]) !== 31 && Number(b?.ivs?.[stat]) !== 31);
+        let score = union.length * 22 + overlap.length * 7 - missing.length * 46;
+
+        const hasKnot = setup.a === 'destiny-knot' || setup.b === 'destiny-knot';
+        if (hasKnot) score += 18 + Math.max(0, union.length - 2) * 4;
+
+        for (const [holder,item] of [[a,setup.a],[b,setup.b]]) {
+          const stat = breedPlannerPowerStat(item);
+          if (!stat) continue;
+          if (required.includes(stat) && Number(holder?.ivs?.[stat]) === 31) score += 19;
+          else score -= 4;
+        }
+
+        let natureText = 'Any nature';
+        if (desired.nature !== 'Any') {
+          const locked = (setup.a === 'everstone' && String(a.nature).toLowerCase() === desired.nature.toLowerCase()) ||
+                         (setup.b === 'everstone' && String(b.nature).toLowerCase() === desired.nature.toLowerCase());
+          const present = String(a.nature).toLowerCase() === desired.nature.toLowerCase() || String(b.nature).toLowerCase() === desired.nature.toLowerCase();
+          if (locked) { score += 48; natureText = `${desired.nature} locked with Everstone`; }
+          else if (present) { score += 8; natureText = `${desired.nature} exists, but is not locked`; }
+          else { score -= 24; natureText = `${desired.nature} is not present on either parent`; }
+        }
+
+        return { score, union, overlap, missing, hasKnot, natureText };
+      }
+
+      function breedPlannerRank(target, desired) {
+        const results = [];
+        for (const pair of breedPlannerLegalPairs(target, desired)) {
+          const a = pair.a, b = pair.b;
+          const sameSpecies = Number(a.dex) === Number(b.dex) && Number(a.dex) !== 132;
+          const currentNurseryPair = pairIsCurrentNurseryPair(a.id,b.id);
+          const ability = breedPlannerAbilityScore(target,a,b,desired.ability);
+          const setups = breedPlannerItemSetups(a,b,desired.nature,desired.requiredStats);
+
+          let best = null;
+          for (const setup of setups) {
+            const ss = breedPlannerScoreSetup(a,b,setup,desired);
+            let score = ss.score + ability.score;
+
+            // Efficiency preference. This is intentionally not presented as an
+            // exact speed multiplier until Worlddex's nursery formula is confirmed.
+            score += sameSpecies ? 58 : -12;
+            if (currentNurseryPair) score += 24;
+            else {
+              if (ownedLocation(a) === 'NURSERY') score -= 18;
+              if (ownedLocation(b) === 'NURSERY') score -= 18;
+            }
+            if (ownedLocation(a) === 'TEAM') score -= 3;
+            if (ownedLocation(b) === 'TEAM') score -= 3;
+            score += (ivSum(a)+ivSum(b))/120;
+
+            if (!best || score > best.score) best = { ...ss, setup, score };
+          }
+          if (!best) continue;
+          results.push({
+            target,
+            a,b,
+            sameSpecies,
+            currentNurseryPair,
+            abilityText:ability.text,
+            ...best
+          });
+        }
+        return results.sort((x,y) => y.score-x.score || y.union.length-x.union.length || breederScore(y.a)+breederScore(y.b)-breederScore(x.a)-breederScore(x.b));
+      }
+
+      function breedPlannerCombinations(items, choose) {
+        const out=[];
+        const arr=[...items];
+        const walk=(start,pick)=>{
+          if (pick.length === choose) { out.push([...pick]); return; }
+          for (let i=start; i<=arr.length-(choose-pick.length); i++) {
+            pick.push(arr[i]); walk(i+1,pick); pick.pop();
+          }
+        };
+        if (choose === 0) return [[]];
+        if (choose < 0 || choose > arr.length) return [];
+        walk(0,[]); return out;
+      }
+
+      function breedPlannerEstimatedRoll(a, b, setup, outputStats, desired, requireNature=false) {
+        // Estimate using the standard modern Pokémon IV inheritance model:
+        // 3 inherited IVs normally, 5 with Destiny Knot; a Power item forces
+        // its holder's stat and counts as one inherited IV. Worlddex's exact
+        // server-side RNG has not been independently confirmed, so this is
+        // deliberately shown as an estimate rather than an exact guarantee.
+        const required=[...new Set(outputStats || [])].filter(stat => STATS.includes(stat));
+        const inheritedCount=(setup?.a === 'destiny-knot' || setup?.b === 'destiny-knot') ? 5 : 3;
+        let forcedStat=null, forcedHolder=null;
+        const aPower=breedPlannerPowerStat(setup?.a);
+        const bPower=breedPlannerPowerStat(setup?.b);
+        if (aPower) { forcedStat=aPower; forcedHolder=a; }
+        else if (bPower) { forcedStat=bPower; forcedHolder=b; }
+
+        const selectable=STATS.filter(stat => stat !== forcedStat);
+        const randomInherited=Math.max(0, Math.min(selectable.length, inheritedCount-(forcedStat ? 1 : 0)));
+        const subsets=breedPlannerCombinations(selectable, randomInherited);
+        if (!subsets.length) return { probability:0, ivProbability:0, natureProbability:1, model:'estimate' };
+
+        let ivProbability=0;
+        for (const subset of subsets) {
+          const inherited=new Set(subset);
+          if (forcedStat) inherited.add(forcedStat);
+          let p=1;
+          for (const stat of required) {
+            if (forcedStat === stat) {
+              p *= Number(forcedHolder?.ivs?.[stat]) === 31 ? 1 : 0;
+            } else if (inherited.has(stat)) {
+              const pa=Number(a?.ivs?.[stat]) === 31 ? 1 : 0;
+              const pb=Number(b?.ivs?.[stat]) === 31 ? 1 : 0;
+              p *= (pa+pb)/2;
+            } else {
+              p *= 1/32;
+            }
+            if (!p) break;
+          }
+          ivProbability += p / subsets.length;
+        }
+
+        let natureProbability=1;
+        if (requireNature && desired?.nature && desired.nature !== 'Any') {
+          natureProbability=breedPlannerNatureLocked(a,b,setup,desired.nature) ? 1 : 1/25;
+        }
+        return {
+          probability:ivProbability*natureProbability,
+          ivProbability,
+          natureProbability,
+          model:'estimate'
+        };
+      }
+
+      function breedPlannerOddsLabel(estimate) {
+        const p=Number(estimate?.probability || 0);
+        if (!(p > 0)) return '0% · no valid roll under this setup';
+        const pct=p*100;
+        const digits=pct >= 10 ? 1 : pct >= 1 ? 2 : pct >= .1 ? 3 : 4;
+        const pctText=pct.toFixed(digits).replace(/0+$/,'').replace(/\.$/,'');
+        const oneIn=Math.max(1,Math.round(1/p));
+        return `${pctText}% · ≈ 1 in ${oneIn.toLocaleString()}`;
+      }
+
+      function breedPlannerIvLabel(stats) {
+        const names={hp:'HP',atk:'Atk',def:'Def',spa:'SpA',spd:'SpD',spe:'Spe'};
+        return stats.length === 6 ? '6×31' : stats.map(s=>names[s]).join('/') + ' = 31';
+      }
+
+      const BREED_STAT_LABELS = { hp:'HP', atk:'Atk', def:'Def', spa:'SpA', spd:'SpD', spe:'Spe' };
+
+      function breedPlannerMaskIvString(stats) {
+        const set = new Set(stats || []);
+        return STATS.map(stat => set.has(stat) ? '31' : '*').join('/');
+      }
+
+      function breedPlannerNatureLocked(a, b, setup, nature) {
+        if (!nature || nature === 'Any') return true;
+        const want = String(nature).toLowerCase();
+        return (setup?.a === 'everstone' && String(a?.nature || '').toLowerCase() === want) ||
+               (setup?.b === 'everstone' && String(b?.nature || '').toLowerCase() === want);
+      }
+
+      function breedPlannerVirtualMon(target, stats, desired, natureReady, label='Previous offspring', breedDex=null) {
+        const mask = new Set(stats || []);
+        const nextDex=Number.isFinite(Number(breedDex)) ? Number(breedDex) : Number(target.eggDex);
+        return {
+          __virtual:true,
+          id:null,
+          dex:nextDex,
+          species:publicSpeciesName(dexToName.get(nextDex) || target.eggName),
+          gender:'f',
+          nature:natureReady && desired.nature !== 'Any' ? desired.nature : 'Any',
+          ability:desired.ability !== 'Any' ? desired.ability : 'Any',
+          ivs:Object.fromEntries(STATS.map(stat => [stat, mask.has(stat) ? 31 : 0])),
+          __label:label
+        };
+      }
+
+      function breedPlannerBestSetupForPair(a, b, desired) {
+        let best = null;
+        for (const setup of breedPlannerItemSetups(a,b,desired.nature,desired.requiredStats)) {
+          const score = breedPlannerScoreSetup(a,b,setup,desired);
+          if (!best || score.score > best.score) best = { ...score, setup };
+        }
+        return best;
+      }
+
+      function breedPlannerPathDonors(target, virtual, missingStats, desired, natureReady) {
+        const wantNature = desired.nature !== 'Any' && !natureReady;
+        const out = [];
+        for (const donor of allOwned) {
+          if (!donor?.ivs || Number(donor.id) === 0) continue;
+          const isDitto = Number(donor.dex) === 132;
+          if (!isDitto) {
+            if (donor.gender !== 'm' || !canBreedSpecies(donor) || !shareEggGroup(virtual, donor)) continue;
+          }
+          const adds = missingStats.filter(stat => Number(donor?.ivs?.[stat]) === 31);
+          const addsNature = wantNature && String(donor.nature || '').toLowerCase() === String(desired.nature).toLowerCase();
+          if (!adds.length && !addsNature) continue;
+
+          const sameSpecies = Number(donor.dex) === Number(virtual.dex) && !isDitto;
+          if (desired.sameSpeciesOnly && !sameSpecies) continue;
+          let score = adds.length * 220 + (addsNature ? 95 : 0) + (sameSpecies ? 60 : 0) + ivPct(donor) / 2;
+          if (ownedLocation(donor) === 'NURSERY') score -= 20;
+          if (ownedLocation(donor) === 'TEAM') score -= 3;
+          if (isDitto) score -= 8;
+          out.push({ donor, adds, addsNature, sameSpecies, score });
+        }
+        return out.sort((a,b) => b.score-a.score || breederScore(b.donor)-breederScore(a.donor));
+      }
+
+      function breedPlannerBuildPath(result, desired) {
+        const target = result.target;
+        const required = [...desired.requiredStats];
+        let mask = new Set(result.union);
+        let natureReady = breedPlannerNatureLocked(result.a, result.b, result.setup, desired.nature);
+        const steps = [{
+          index:1,
+          actual:true,
+          a:result.a,
+          b:result.b,
+          setup:result.setup,
+          outputStats:[...mask],
+          addedStats:[...mask],
+          natureReady,
+          sameSpecies:result.sameSpecies,
+          currentNurseryPair:result.currentNurseryPair,
+          evolveBeforeNext: desired.sameSpeciesOnly && Number(result.a?.dex) !== Number(target.eggDex)
+            ? publicSpeciesName(dexToName.get(Number(result.a.dex)) || result.a.species)
+            : ''
+        }];
+
+        let blocker = '';
+        for (let i=2; i<=5; i++) {
+          const missing = required.filter(stat => !mask.has(stat));
+          if (!missing.length && natureReady) break;
+
+          const sameSpeciesBreedDex = desired.sameSpeciesOnly ? Number(result.a?.dex) : null;
+          const virtual = breedPlannerVirtualMon(target, [...mask], desired, natureReady, `Step ${i-1} offspring`, sameSpeciesBreedDex);
+          const donors = breedPlannerPathDonors(target, virtual, missing, desired, natureReady);
+          if (!donors.length) {
+            const bits=[];
+            if (missing.length) bits.push(`no owned compatible breeder supplies ${missing.map(s=>BREED_STAT_LABELS[s]).join(', ')} at 31`);
+            if (desired.nature !== 'Any' && !natureReady) bits.push(`no compatible owned breeder currently carries ${desired.nature}`);
+            blocker = bits.join(' and ') || 'no useful next breeder was found';
+            break;
+          }
+
+          const choice = donors[0];
+          const setupInfo = breedPlannerBestSetupForPair(virtual, choice.donor, desired);
+          if (!setupInfo) { blocker='no valid item setup was found for the next step'; break; }
+
+          const nextMask = new Set(mask);
+          for (const stat of required) if (Number(choice.donor?.ivs?.[stat]) === 31) nextMask.add(stat);
+          const nextNatureReady = natureReady || breedPlannerNatureLocked(virtual, choice.donor, setupInfo.setup, desired.nature);
+          const addedStats = [...nextMask].filter(stat => !mask.has(stat));
+          const madeProgress = addedStats.length || (!natureReady && nextNatureReady);
+          if (!madeProgress) { blocker='the next owned breeder does not improve the planned checkpoint'; break; }
+
+          steps.push({
+            index:i,
+            actual:false,
+            a:virtual,
+            b:choice.donor,
+            donorId:Number(choice.donor.id),
+            setup:setupInfo.setup,
+            outputStats:[...nextMask],
+            addedStats,
+            natureReady:nextNatureReady,
+            sameSpecies:choice.sameSpecies,
+            currentNurseryPair:false,
+            evolveBeforeNext: desired.sameSpeciesOnly && Number(virtual.dex) !== Number(target.eggDex)
+              ? publicSpeciesName(dexToName.get(Number(virtual.dex)) || virtual.species)
+              : ''
+          });
+          mask = nextMask;
+          natureReady = nextNatureReady;
+        }
+
+        const missingStats = required.filter(stat => !mask.has(stat));
+        const complete = !missingStats.length && (desired.nature === 'Any' || natureReady);
+        for (let i=0;i<steps.length;i++) {
+          const next = steps[i+1];
+          steps[i].final = complete && i === steps.length-1;
+          steps[i].sexHint = next && Number(next?.b?.dex) !== 132 ? 'Female needed for the next cross' : 'Any sex';
+          if (!next) steps[i].evolveBeforeNext='';
+        }
+        return { steps, complete, missingStats, natureReady, blocker };
+      }
+
+      function breedPlannerDesiredOutputHtml(step, desired, target) {
+        const outputStats = step?.outputStats || [];
+        const final = !!step?.final;
+        const added = step?.addedStats || [];
+        const nature = desired.nature === 'Any'
+          ? 'Any'
+          : (step?.natureReady ? desired.nature : `${desired.nature} preferred — not locked yet`);
+        const ability = desired.ability === 'Any' ? 'Any' : desired.ability;
+        const sixRng = final && desired.requiredStats.length === 6
+          ? '<small>6×31 is still an RNG roll even when all six 31 sources are available.</small>'
+          : '';
+        const odds=breedPlannerEstimatedRoll(step?.a,step?.b,step?.setup,outputStats,desired,desired.nature !== 'Any' && !!step?.natureReady);
+        const abilityNote=desired.ability !== 'Any' ? ' · ability chance not included' : '';
+        const evolveNote=step?.evolveBeforeNext
+          ? `<span><b>Before next step:</b> evolve offspring to ${escHtml(step.evolveBeforeNext)}</span>`
+          : '';
+        return `<div class="wdbp-output ${final?'final':''}">
+          <div class="wdbp-output-title"><b>${final?'FINAL DESIRED OUTPUT':'DESIRED OUTPUT'}</b><span>${escHtml(publicSpeciesName(target.eggName))}</span></div>
+          <div class="wdbp-output-iv"><b>${escHtml(breedPlannerMaskIvString(outputStats))}</b><small>${outputStats.length}/${desired.requiredStats.length} target 31s</small></div>
+          <div class="wdbp-output-meta">
+            <span><b>Nature:</b> ${escHtml(nature)}</span>
+            <span><b>Ability:</b> ${escHtml(ability)}</span>
+            <span><b>Sex:</b> ${escHtml(step?.sexHint || 'Any sex')}</span>
+            ${added.length ? `<span><b>This step adds:</b> ${escHtml(added.map(s=>BREED_STAT_LABELS[s]).join(', '))}</span>` : ''}
+            ${evolveNote}
+            <span class="wdbp-odds"><b>Estimated roll:</b> ${escHtml(breedPlannerOddsLabel(odds))}</span>
+          </div><small>Per-Egg IV${desired.nature !== 'Any' && step?.natureReady ? ' + required nature' : ''} estimate using standard inheritance${abilityNote}; Egg production speed is separate.</small>${sixRng}
+        </div>`;
+      }
+
+      function breedPlannerMonCard(m, item, compact=false) {
+        if (m?.__virtual) {
+          return `<div class="wdbp-parent virtual">
+            <div><b>${escHtml(m.__label || 'Previous offspring')}</b> <span class="wdbp-id">${escHtml(publicSpeciesName(m.species))}</span></div>
+            <div class="wdbp-ivline">${escHtml(ivString(m))} <span>planned checkpoint</span></div>
+            <small>${escHtml(m.nature || 'Any')} · ${escHtml(m.ability || 'Any')} · PLANNED</small>
+            <div class="wdbp-item">Use: ${escHtml(BREED_ITEM_LABELS[item] || item || 'No item')}</div>
+          </div>`;
+        }
+        return `<div class="wdbp-parent">
+          <div><b>${escHtml(publicSpeciesName(m.species))} ${sex(m)}</b> <span class="wdbp-id">#${Number(m.id)}</span></div>
+          <div class="wdbp-ivline"><b>${escHtml(ivString(m))}</b> <span>${escHtml(ivPctLabel(m))} IV</span></div>
+          <small>${escHtml(m.nature || '—')} · ${escHtml(m.ability || '—')} · ${escHtml(ownedLocation(m))}</small>
+          <div class="wdbp-item">Use: ${escHtml(BREED_ITEM_LABELS[item] || item || 'No item')}</div>
+        </div>`;
+      }
+
+      function breedPlannerExplanationHtml(r, desired) {
+        const coverage = `${r.union.length}/${desired.requiredStats.length}`;
+        const missing = r.missing.length ? `Missing 31 sources: ${r.missing.map(s=>BREED_STAT_LABELS[s]).join(', ')}` : 'All requested 31s are represented by the pair';
+        const compat = r.sameSpecies ? 'FAST preference · same species' : 'SLOW warning · different species';
+        const firstStep=r.path?.steps?.[0] || {a:r.a,b:r.b,setup:r.setup,outputStats:r.union,natureReady:breedPlannerNatureLocked(r.a,r.b,r.setup,desired.nature)};
+        const odds=breedPlannerEstimatedRoll(firstStep.a,firstStep.b,firstStep.setup,firstStep.outputStats,desired,desired.nature !== 'Any' && !!firstStep.natureReady);
+        return `<div class="wdbp-explain">
+          <span><b>Egg:</b> ${escHtml(publicSpeciesName(r.target.eggName))}</span>
+          <span><b>Target IV coverage:</b> ${coverage}</span>
+          <span><b>Compatibility:</b> ${compat}</span>
+          <span><b>Nature:</b> ${escHtml(r.natureText)}</span>
+          <span><b>Ability:</b> ${escHtml(r.abilityText)}</span>
+          <span><b>Estimated current roll:</b> ${escHtml(breedPlannerOddsLabel(odds))}</span>
+          <span class="${r.missing.length?'warn':'ok'}"><b>${escHtml(missing)}</b></span>
+        </div>`;
+      }
+
+      function breedPlannerResultHtml(r, idx, desired) {
+        const coverage = `${r.union.length}/${desired.requiredStats.length}`;
+        const compatShort = r.sameSpecies ? 'FAST' : 'SLOW';
+        const nursery = r.currentNurseryPair ? '<span class="wdbp-live">CURRENTLY IN NURSERY</span>' : '';
+        const firstStep = r.path?.steps?.[0] || { outputStats:r.union, natureReady:breedPlannerNatureLocked(r.a,r.b,r.setup,desired.nature), final:false, sexHint:'Any sex' };
+
+        if (idx > 0) {
+          return `<details class="wdbp-result wdbp-alt">
+            <summary><span><b>OPTION ${idx+1}</b> · ${escHtml(publicSpeciesName(r.a.species))} ${sex(r.a)} #${Number(r.a.id)} × ${escHtml(publicSpeciesName(r.b.species))} ${sex(r.b)} #${Number(r.b.id)}</span><span>${coverage} · ${compatShort} · ${escHtml(ivPctLabel(r.a))}/${escHtml(ivPctLabel(r.b))}</span></summary>
+            <div class="wdbp-result-tools"><button data-save-breed-result="${idx}">Save as project</button></div>
+            <div class="wdbp-pair">${breedPlannerMonCard(r.a,r.setup.a)}<div class="wdbp-x">×</div>${breedPlannerMonCard(r.b,r.setup.b)}</div>
+            ${breedPlannerDesiredOutputHtml(firstStep,desired,r.target)}
+            <details class="wdbp-why"><summary>Why this pairing?</summary>${breedPlannerExplanationHtml(r,desired)}</details>
+          </details>`;
+        }
+
+        return `<div class="wdbp-result best">
+          <div class="wdbp-result-head"><div><b>BEST MATCH</b> ${nursery}</div><button data-save-breed-result="${idx}">Save as project</button></div>
+          <div class="wdbp-pair">${breedPlannerMonCard(r.a,r.setup.a)}<div class="wdbp-x">×</div>${breedPlannerMonCard(r.b,r.setup.b)}</div>
+          ${breedPlannerDesiredOutputHtml(firstStep,desired,r.target)}
+          <details class="wdbp-why"><summary>Why this pairing?</summary>${breedPlannerExplanationHtml(r,desired)}</details>
+        </div>`;
+      }
+
+      function breedPlannerPathHtml(path, desired, target) {
+        if (!path?.steps?.length) return '';
+        const status = path.complete
+          ? `<span class="wdbp-path-ok">PATH REACHES TARGET</span>`
+          : `<span class="wdbp-path-warn">PATH NEEDS ANOTHER BREEDER</span>`;
+        const steps = path.steps.map((step,i) => {
+          const label = step.currentNurseryPair ? 'CURRENTLY IN NURSERY' : (i===0 ? 'START HERE' : 'PLANNED');
+          const compat = step.sameSpecies ? 'FAST · same species' : 'SLOW · different species';
+          return `<div class="wdbp-step ${step.final?'final':''}">
+            <div class="wdbp-step-head"><b>STEP ${step.index}</b><span>${label}</span><small>${compat}</small></div>
+            <div class="wdbp-pair compact">${breedPlannerMonCard(step.a,step.setup?.a,true)}<div class="wdbp-x">×</div>${breedPlannerMonCard(step.b,step.setup?.b,true)}</div>
+            ${breedPlannerDesiredOutputHtml(step,desired,target)}
+          </div>`;
+        }).join('');
+        const blocker = path.blocker ? `<div class="wdbp-path-blocker"><b>Planner note:</b> ${escHtml(path.blocker)}.</div>` : '';
+        return `<section class="wdbp-path">
+          <div class="wdbp-path-head"><div><b>FULL BREEDING PATH</b><small>Each step tells you which offspring profile to keep. Reload after hatching and the planner will recalculate from your new owned Pokémon.</small></div>${status}</div>
+          ${steps}${blocker}
+        </section>`;
+      }
+
+      let breedPlannerLastResults = [];
+      let breedPlannerLastDesired = null;
+      let breedPlannerLastTarget = null;
+
+      function breedPlannerReadForm() {
+        const target = breedPlannerResolveTarget(document.getElementById('wd-breed-target')?.value);
+        if (!target || target.error) return { error:target?.error || 'Choose a valid Pokémon first.' };
+        const requiredStats = STATS.filter(stat => document.querySelector(`[data-breed-iv="${stat}"]`)?.checked);
+        if (!requiredStats.length) return { error:'Select at least one target IV.' };
+        const nature = String(document.getElementById('wd-breed-nature')?.value || 'Any');
+        const ability = String(document.getElementById('wd-breed-ability')?.value || 'Any').trim() || 'Any';
+        const sameSpeciesOnly = !!document.getElementById('wd-breed-same-only')?.checked;
+        return { target, desired:{ nature, ability, requiredStats, sameSpeciesOnly } };
+      }
+
+      function renderBreedPlannerResults() {
+        const out = document.getElementById('wd-breed-results');
+        const status = document.getElementById('wd-breed-status');
+        if (!out) return;
+        const form = breedPlannerReadForm();
+        if (form.error) {
+          breedPlannerLastResults=[]; breedPlannerLastDesired=null; breedPlannerLastTarget=null;
+          out.innerHTML=`<div class="wdbp-empty">${escHtml(form.error)}</div>`;
+          if(status) status.textContent='';
+          return;
+        }
+        const {target,desired}=form;
+        breedPlannerLastTarget=target; breedPlannerLastDesired=desired;
+
+        const enriched = breedPlannerRank(target,desired).slice(0,30).map(r => ({ ...r, path:breedPlannerBuildPath(r,desired) }));
+        enriched.sort((a,b) =>
+          Number(b.path?.complete)-Number(a.path?.complete) ||
+          (a.path?.missingStats?.length||0)-(b.path?.missingStats?.length||0) ||
+          (a.path?.steps?.length||99)-(b.path?.steps?.length||99) ||
+          b.score-a.score
+        );
+        breedPlannerLastResults=enriched.slice(0,3);
+        if (!breedPlannerLastResults.length) {
+          out.innerHTML=`<div class="wdbp-empty">No legal ${desired.sameSpeciesOnly?'same-species ':''}pair was found in Box + Team + Nursery for ${escHtml(publicSpeciesName(target.name))}.${desired.sameSpeciesOnly?' Disable “Only same species” to allow compatible Egg Group crosses.':''}</div>`;
+          if(status) status.textContent=`Egg species: ${publicSpeciesName(target.eggName)}`;
+          return;
+        }
+        if(status) status.textContent=`Final target: ${publicSpeciesName(target.name)} · Egg species: ${publicSpeciesName(target.eggName)} · ${breedPlannerIvLabel(desired.requiredStats)}${desired.sameSpeciesOnly?' · SAME-SPECIES ONLY':''}`;
+        const [best,...alts]=breedPlannerLastResults;
+        out.innerHTML=breedPlannerResultHtml(best,0,desired) + breedPlannerPathHtml(best.path,desired,target) + alts.map((r,i)=>breedPlannerResultHtml(r,i+1,desired)).join('');
+        out.querySelectorAll('[data-save-breed-result]').forEach(btn => btn.addEventListener('click',()=>saveBreedPlannerResult(Number(btn.dataset.saveBreedResult))));
+      }
+
+      function saveBreedPlannerResult(index) {
+        const r=breedPlannerLastResults[index];
+        const desired=breedPlannerLastDesired;
+        if(!r || !desired) return;
+        const key=r.target.familyKey;
+        const current=familyDecision(key);
+        const previousPlan=breedPlans.get(key);
+        const pathSteps=(r.path?.steps || []).map(step => ({
+          index:Number(step.index),
+          parentAId:Number.isFinite(Number(step.a?.id)) ? Number(step.a.id) : null,
+          parentBId:Number.isFinite(Number(step.b?.id)) ? Number(step.b.id) : null,
+          donorId:Number.isFinite(Number(step.donorId)) ? Number(step.donorId) : null,
+          outputStats:[...(step.outputStats || [])],
+          itemA:step.setup?.a || '',
+          itemB:step.setup?.b || '',
+          final:!!step.final
+        }));
+        const protectedIds=[...new Set(pathSteps.flatMap(step => [step.parentAId,step.parentBId,step.donorId]).filter(Number.isFinite))];
+        const plan={
+          familyKey:key,
+          targetDex:r.target.dex,
+          targetName:publicSpeciesName(r.target.name),
+          eggDex:r.target.eggDex,
+          eggName:publicSpeciesName(r.target.eggName),
+          nature:desired.nature,
+          ability:desired.ability,
+          requiredStats:[...desired.requiredStats],
+          ivLabel:breedPlannerIvLabel(desired.requiredStats),
+          parentAId:Number(r.a.id), parentBId:Number(r.b.id),
+          parentASpecies:publicSpeciesName(r.a.species), parentBSpecies:publicSpeciesName(r.b.species),
+          itemA:r.setup.a, itemB:r.setup.b,
+          sameSpecies:r.sameSpecies,
+          sameSpeciesOnly:!!desired.sameSpeciesOnly,
+          pathSteps,
+          protectedIds,
+          autoManagedMode:true,
+          previousFamilyMode:previousPlan?.previousFamilyMode || (previousPlan ? FAMILY_MODE.AUTO : current.mode),
+          savedAt:new Date().toISOString()
+        };
+        breedPlans.set(key,plan); saveBreedPlans();
+        const mode=breedPlanSuggestedMode(plan);
+        plan.lastAutoMode=mode; breedPlans.set(key,plan); saveBreedPlans();
+        familyDecisions.set(key,{...current,mode});
+        saveFamilyDecisions();
+        rebuildAnalysis(true); organizerPlan=null;
+        renderCandidateRows?.(); renderFamilyDecisionRows?.(); updatePanelCounts?.(); managerUpdateNav?.();
+        const msg=document.getElementById('wd-breed-save-msg');
+        if(msg) msg.innerHTML=`Saved <b>${escHtml(plan.targetName)}</b> as <b>${mode===FAMILY_MODE.BREED?'BREED NOW':'TO-BE'}</b> in Breeding Projects.`;
+      }
+
+      function breedPlannerApplyPreset(name) {
+        const sets={
+          physical:['hp','atk','def','spd','spe'],
+          special:['hp','def','spa','spd','spe'],
+          six:[...STATS]
+        };
+        const wanted=sets[name];
+        if(!wanted) return;
+        for(const stat of STATS){
+          const el=document.querySelector(`[data-breed-iv="${stat}"]`);
+          if(el) el.checked=wanted.includes(stat);
+        }
+        renderBreedPlannerResults();
+      }
+
+      function breedPlannerPrefillFromPlan(plan) {
+        if(!plan) return;
+        const target=document.getElementById('wd-breed-target');
+        const nature=document.getElementById('wd-breed-nature');
+        const ability=document.getElementById('wd-breed-ability');
+        if(target) target.value=plan.targetName || '';
+        if(nature) nature.value=plan.nature || 'Any';
+        if(ability) ability.value=plan.ability || 'Any';
+        const sameOnly=document.getElementById('wd-breed-same-only');
+        if(sameOnly) sameOnly.checked=!!plan.sameSpeciesOnly;
+        const req=new Set(plan.requiredStats || []);
+        for(const stat of STATS){
+          const el=document.querySelector(`[data-breed-iv="${stat}"]`);
+          if(el) el.checked=req.has(stat);
+        }
+      }
+
+      function mountBreedPlannerPanel(familyKeyToOpen=null) {
+        managerPrepareView('planner');
+        document.getElementById('wd-breed-planner-v116')?.remove();
+        document.getElementById('wd-breed-planner-v116-style')?.remove();
+
+        const style=document.createElement('style');
+        style.id='wd-breed-planner-v116-style';
+        style.textContent=`
+          #wd-breed-planner-v116{height:100%;display:flex;flex-direction:column;background:#11151d;color:#e8edf5;font:13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;min-width:0}
+          #wd-breed-planner-v116 *{box-sizing:border-box} #wd-breed-planner-v116 button,#wd-breed-planner-v116 input,#wd-breed-planner-v116 select{font:inherit}
+          #wd-breed-planner-v116 .wdbp-head{display:none}
+          #wd-breed-planner-v116 .wdbp-form{padding:10px 12px;border-bottom:1px solid #2d3849;background:#121822;display:grid;grid-template-columns:minmax(190px,1.3fr) minmax(150px,.8fr) minmax(170px,1fr);gap:8px;align-items:end}
+          #wd-breed-planner-v116 label{display:flex;flex-direction:column;gap:4px;color:#9eacbf} #wd-breed-planner-v116 input,#wd-breed-planner-v116 select{background:#0b1017;border:1px solid #344154;color:#fff;border-radius:7px;padding:7px 9px;min-width:0}
+          #wd-breed-planner-v116 .wdbp-ivs{grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-top:2px}
+          #wd-breed-planner-v116 .wdbp-ivs label{display:flex;flex-direction:row;align-items:center;gap:4px;background:#171f2b;border:1px solid #334156;border-radius:7px;padding:5px 7px;color:#dce5f0}
+          #wd-breed-planner-v116 .wdbp-ivs input{width:auto;margin:0;padding:0}
+          #wd-breed-planner-v116 button{border:1px solid #3b485d;background:#202938;color:#e8edf5;border-radius:7px;padding:6px 9px;cursor:pointer} #wd-breed-planner-v116 button:hover{background:#2a3648}
+          #wd-breed-planner-v116 .wdbp-presets{display:flex;gap:5px;margin-left:4px;flex-wrap:wrap}
+          #wd-breed-planner-v116 .wdbp-fast-only{display:flex;flex-direction:row;align-items:center;gap:6px;margin-left:5px;background:#172417;border:1px solid #365f3c;border-radius:7px;padding:5px 8px;color:#bfe5c4;white-space:nowrap}#wd-breed-planner-v116 .wdbp-fast-only input{width:auto;margin:0;padding:0}
+          #wd-breed-planner-v116 .wdbp-meta{padding:7px 12px;border-bottom:1px solid #2d3849;color:#9eacbf;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.wdbp-meta .msg{color:#9fd6b9}
+          #wd-breed-planner-v116 .wdbp-results{flex:1;min-height:0;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:10px;scrollbar-gutter:stable}
+          #wd-breed-planner-v116 .wdbp-result{border:1px solid #303d50;background:#151c27;border-radius:10px;overflow:hidden;flex:0 0 auto} #wd-breed-planner-v116 .wdbp-result.best{border-color:#4d7897}
+          #wd-breed-planner-v116 .wdbp-result-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:#1a2431;border-bottom:1px solid #303d50}
+          #wd-breed-planner-v116 .wdbp-result-tools{display:flex;justify-content:flex-end;padding:7px 9px 0}
+          #wd-breed-planner-v116 .wdbp-pair{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:stretch;padding:9px}
+          #wd-breed-planner-v116 .wdbp-pair.compact{padding:8px}.wdbp-pair.compact .wdbp-parent{padding:8px}
+          #wd-breed-planner-v116 .wdbp-x{display:flex;align-items:center;justify-content:center;font-size:18px;color:#8292a7}
+          #wd-breed-planner-v116 .wdbp-parent{min-width:0;background:#0f151e;border:1px solid #283548;border-radius:8px;padding:9px}
+          #wd-breed-planner-v116 .wdbp-parent.virtual{border-style:dashed;background:#111925}
+          #wd-breed-planner-v116 .wdbp-parent small{display:block;color:#8fa0b5;margin-top:3px;white-space:normal}.wdbp-id{color:#7f91a8}.wdbp-item{margin-top:6px;color:#b9dcff;font-weight:700}
+          #wd-breed-planner-v116 .wdbp-ivline{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-top:2px}.wdbp-ivline span{color:#9fd6b9;font-weight:700}
+          #wd-breed-planner-v116 .wdbp-live{font-size:11px;color:#8ee6ad;border:1px solid #39704b;border-radius:999px;padding:2px 6px;margin-left:6px}
+          #wd-breed-planner-v116 .wdbp-output{margin:0 9px 9px;padding:9px 10px;border:1px solid #34475e;border-radius:8px;background:#111a25}
+          #wd-breed-planner-v116 .wdbp-output.final{border-color:#46745a;background:#102019}
+          #wd-breed-planner-v116 .wdbp-output-title{display:flex;justify-content:space-between;gap:8px;align-items:center;color:#9eb2c9}.wdbp-output-title b{color:#dceaff}.wdbp-output-title span{color:#fff}
+          #wd-breed-planner-v116 .wdbp-output-iv{display:flex;align-items:baseline;gap:9px;margin:5px 0}.wdbp-output-iv b{font:700 15px ui-monospace,SFMono-Regular,Consolas,monospace;color:#fff}.wdbp-output-iv small{color:#8fa0b5}
+          #wd-breed-planner-v116 .wdbp-output-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 12px;color:#aeb9c8}.wdbp-output-meta b{color:#e8edf5}.wdbp-output-meta .wdbp-odds{color:#9fd6b9}.wdbp-output>small{display:block;color:#8fa0b5;margin-top:5px}
+          #wd-breed-planner-v116 .wdbp-why{margin:0 9px 9px;border-top:1px solid #293547;padding-top:6px;color:#aeb9c8}.wdbp-why>summary{cursor:pointer;color:#b9dcff;font-weight:650;user-select:none}
+          #wd-breed-planner-v116 .wdbp-explain{padding:8px 0 2px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;color:#aeb9c8}.wdbp-explain b{color:#e8edf5}.wdbp-explain .ok{color:#9fd6b9}.wdbp-explain .warn{color:#e9bd7a}
+          #wd-breed-planner-v116 details.wdbp-alt>summary{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:9px 11px;background:#18212d;cursor:pointer;list-style:none;color:#b8c5d6;min-width:0}
+          #wd-breed-planner-v116 details.wdbp-alt>summary::-webkit-details-marker{display:none} #wd-breed-planner-v116 details.wdbp-alt>summary span{min-width:0;white-space:normal}.wdbp-alt[open]>summary{border-bottom:1px solid #303d50}
+          #wd-breed-planner-v116 .wdbp-path{border:1px solid #3a4b61;background:#121923;border-radius:10px;overflow:hidden;flex:0 0 auto}
+          #wd-breed-planner-v116 .wdbp-path-head{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 11px;background:#192332;border-bottom:1px solid #34445a}.wdbp-path-head>div{min-width:0}.wdbp-path-head b{display:block}.wdbp-path-head small{display:block;color:#92a1b5;margin-top:2px}
+          #wd-breed-planner-v116 .wdbp-path-ok,#wd-breed-planner-v116 .wdbp-path-warn{font-size:11px;border-radius:999px;padding:3px 7px;white-space:nowrap}.wdbp-path-ok{color:#99e7b2;border:1px solid #3b7550}.wdbp-path-warn{color:#efc98f;border:1px solid #806337}
+          #wd-breed-planner-v116 .wdbp-step{padding:9px 0 0;border-bottom:1px solid #2b3748}.wdbp-step:last-of-type{border-bottom:0}.wdbp-step.final{background:rgba(63,112,78,.08)}
+          #wd-breed-planner-v116 .wdbp-step-head{display:flex;gap:8px;align-items:center;padding:0 10px;color:#9eb0c5}.wdbp-step-head b{color:#fff}.wdbp-step-head span{font-size:11px;border:1px solid #41526a;border-radius:999px;padding:2px 6px}.wdbp-step-head small{margin-left:auto;color:#8999ad}
+          #wd-breed-planner-v116 .wdbp-path-blocker{padding:9px 11px;color:#e4bd80;background:#211b13;border-top:1px solid #59472f}
+          #wd-breed-planner-v116 .wdbp-empty{padding:28px;text-align:center;color:#8e9caf;border:1px dashed #334156;border-radius:9px}
+          #wd-breed-planner-v116 .wdbp-foot{padding:7px 12px;border-top:1px solid #2d3849;color:#8392a5;background:#101620;flex:0 0 auto}
+          @media(max-width:900px){
+            #wd-breed-planner-v116 .wdbp-form{grid-template-columns:1fr}#wd-breed-planner-v116 .wdbp-ivs{grid-column:1}
+            #wd-breed-planner-v116 .wdbp-pair{grid-template-columns:1fr}.wdbp-x{justify-content:center}
+            #wd-breed-planner-v116 .wdbp-explain,#wd-breed-planner-v116 .wdbp-output-meta{grid-template-columns:1fr}
+            #wd-breed-planner-v116 details.wdbp-alt>summary{align-items:flex-start;flex-direction:column;gap:3px}
+            #wd-breed-planner-v116 .wdbp-path-head{align-items:flex-start;flex-direction:column}
+          }
+        `;
+        document.head.appendChild(style);
+
+        const species=breedPlannerSpeciesOptions();
+        const natureOpts=['Any',...BREED_NATURES].map(n=>`<option value="${escAttr(n)}">${escHtml(n)}</option>`).join('');
+        const panel=document.createElement('div'); panel.id='wd-breed-planner-v116';
+        panel.innerHTML=`<div class="wdbp-head"></div>
+          <div class="wdbp-form">
+            <label>Desired Pokémon<input id="wd-breed-target" list="wd-breed-species-list" placeholder="e.g. Charizard"><datalist id="wd-breed-species-list">${species.map(x=>`<option value="${escAttr(x.name)}"></option>`).join('')}</datalist></label>
+            <label>Desired nature<select id="wd-breed-nature">${natureOpts}</select></label>
+            <label>Desired ability<input id="wd-breed-ability" list="wd-breed-ability-list" value="Any" placeholder="Any"><datalist id="wd-breed-ability-list"></datalist></label>
+            <div class="wdbp-ivs"><b style="color:#e8edf5">Desired 31s:</b>${STATS.map(stat=>`<label><input type="checkbox" data-breed-iv="${stat}" checked>${stat.toUpperCase()}</label>`).join('')}<label class="wdbp-fast-only" title="Restrict the entire planned path to same-species pairings for faster Egg production. The planner may tell you to evolve an offspring before the next cross."><input type="checkbox" id="wd-breed-same-only">Only same species</label><div class="wdbp-presets"><button data-breed-preset="physical">Physical 5×31</button><button data-breed-preset="special">Special 5×31</button><button data-breed-preset="six">6×31</button></div><button id="wd-breed-calculate" style="margin-left:auto;background:#315878;border-color:#4c7ca3"><b>Find best pair</b></button></div>
+          </div>
+          <div class="wdbp-meta"><span id="wd-breed-status"></span><span id="wd-breed-save-msg" class="msg"></span></div>
+          <div id="wd-breed-results" class="wdbp-results"><div class="wdbp-empty">Choose a target Pokémon to rank your best owned breeding pairs.</div></div>
+          <div class="wdbp-foot">“Only same species” restricts the full path to fast same-species pairings. Per-Egg odds are estimates from the standard Destiny Knot / Power Item IV inheritance model; ability inheritance and Worlddex Egg-generation timing are not included until their exact server rules are confirmed.</div>`;
+        managerAttachView(panel,'.wdbp-head');
+
+        const updateAbilities=()=>{
+          const target=breedPlannerResolveTarget(document.getElementById('wd-breed-target')?.value);
+          const dl=document.getElementById('wd-breed-ability-list');
+          if(!dl || !target || target.error){ if(dl) dl.innerHTML=''; return; }
+          const vals=[...new Set(breedPlannerTargetFamilyOwned(target).map(m=>String(m.ability||'')).filter(Boolean))].sort();
+          dl.innerHTML=vals.map(v=>`<option value="${escAttr(v)}"></option>`).join('');
+        };
+        document.getElementById('wd-breed-target').addEventListener('change',()=>{updateAbilities();renderBreedPlannerResults();});
+        document.getElementById('wd-breed-nature').addEventListener('change',renderBreedPlannerResults);
+        document.getElementById('wd-breed-ability').addEventListener('change',renderBreedPlannerResults);
+        document.getElementById('wd-breed-same-only').addEventListener('change',renderBreedPlannerResults);
+        document.getElementById('wd-breed-calculate').addEventListener('click',()=>{updateAbilities();renderBreedPlannerResults();});
+        document.querySelectorAll('[data-breed-iv]').forEach(el=>el.addEventListener('change',renderBreedPlannerResults));
+        document.querySelectorAll('[data-breed-preset]').forEach(el=>el.addEventListener('click',()=>breedPlannerApplyPreset(el.dataset.breedPreset)));
+
+        // Better default than 6×31 for most physical attackers.
+        breedPlannerApplyPreset('physical');
+        if(familyKeyToOpen && breedPlans.has(familyKeyToOpen)){
+          breedPlannerPrefillFromPlan(breedPlans.get(familyKeyToOpen)); updateAbilities(); renderBreedPlannerResults();
+        }
       }
 
 
@@ -1459,9 +2422,10 @@
 
       const MANAGER_VIEW_META = {
         cleaner:   { label:'Clean Up', mount:() => mountReviewPanel() },
+        planner:   { label:'Breed Planner', mount:() => mountBreedPlannerPanel() },
         specials:  { label:'Special Pokémon', mount:() => mountSpecialPanel() },
         dex:       { label:'Pokédex Tasks', mount:() => mountDexTaskPanel() },
-        breeding:  { label:'Breeding Plans', mount:() => mountFamilyDecisionPanel() },
+        breeding:  { label:'Breeding Projects', mount:() => mountFamilyDecisionPanel() },
         organizer: { label:'Organize Boxes', mount:() => mountOrganizerPanel() }
       };
 
@@ -1469,6 +2433,7 @@
         'wd-box-cleaner-v13',
         'wd-box-organizer-v14',
         'wd-family-decisions-v15',
+        'wd-breed-planner-v116',
         'wd-special-manager-v18',
         'wd-dex-tasks-v16'
       ];
@@ -1477,6 +2442,7 @@
         'wd-box-cleaner-v13-style',
         'wd-box-organizer-v14-style',
         'wd-family-decisions-v15-style',
+        'wd-breed-planner-v116-style',
         'wd-special-manager-v18-style',
         'wd-dex-tasks-v16-style'
       ];
@@ -1552,12 +2518,12 @@
             z-index:2147483647;
             right:16px;
             bottom:16px;
-            width:min(1180px, calc(100vw - 32px));
+            width:min(1260px, calc(100vw - 32px));
             height:min(82vh, 860px);
 
             /* Start exactly as before, but allow the manager to grow.
                The normal starting size is also the minimum desktop size. */
-            min-width:min(1180px, calc(100vw - 32px));
+            min-width:min(1260px, calc(100vw - 32px));
             min-height:min(82vh, 860px);
             max-width:calc(100vw - 12px);
             max-height:calc(100vh - 12px);
@@ -1599,17 +2565,19 @@
           #wd-manager-shell-v110 .wdm-head {
             flex:0 0 auto;
             display:flex;
-            gap:9px;
+            gap:7px;
             align-items:center;
-            padding:10px 12px;
+            flex-wrap:nowrap;
+            padding:8px 10px;
             background:#171d27;
             border-bottom:1px solid #2d3849;
             cursor:grab;
             user-select:none;
           }
           #wd-manager-shell-v110 .wdm-brand {
-            min-width:180px;
-            margin-right:2px;
+            flex:0 0 205px;
+            min-width:205px;
+            margin-right:1px;
           }
           #wd-manager-shell-v110 .wdm-brand b {
             display:block;
@@ -1621,15 +2589,21 @@
           }
           #wd-manager-shell-v110 .wdm-nav {
             display:flex;
-            gap:5px;
+            gap:4px;
             align-items:center;
-            flex-wrap:wrap;
+            flex:1 1 auto;
+            min-width:0;
+            flex-wrap:nowrap;
+            overflow-x:auto;
+            scrollbar-width:none;
           }
+          #wd-manager-shell-v110 .wdm-nav::-webkit-scrollbar { display:none; }
           #wd-manager-shell-v110 .wdm-nav-group {
             display:flex;
-            gap:5px;
+            gap:4px;
             align-items:center;
-            flex-wrap:wrap;
+            flex-wrap:nowrap;
+            flex:0 0 auto;
           }
           #wd-manager-shell-v110 .wdm-nav-divider {
             width:1px;
@@ -1646,14 +2620,14 @@
           #wd-manager-shell-v110 .wdm-primary-action:hover {
             background:#2d3b50;
           }
-          #wd-manager-shell-v110 .wdm-spacer { flex:1; }
+          #wd-manager-shell-v110 .wdm-spacer { display:none; }
           #wd-manager-shell-v110 button {
             font:inherit;
             border:1px solid #3b485d;
             background:#202938;
             color:#e8edf5;
             border-radius:7px;
-            padding:7px 9px;
+            padding:6px 8px;
             cursor:pointer;
             white-space:nowrap;
           }
@@ -1715,7 +2689,14 @@
               flex-wrap:wrap;
             }
             #wd-manager-shell-v110 .wdm-brand {
+              flex:1 1 160px;
               min-width:150px;
+            }
+            #wd-manager-shell-v110 .wdm-nav {
+              order:3;
+              flex:1 0 100%;
+              width:100%;
+              padding-top:2px;
             }
             #wd-manager-shell-v110 .wdm-nav-divider {
               display:none;
@@ -1730,17 +2711,18 @@
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.15.1</b>
+              <b>Worlddex Box Manager v1.17.1</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
               <div class="wdm-nav-group" aria-label="Actions">
                 <button class="wdm-primary-action" data-manager-view="organizer">Organize Boxes</button>
                 <button class="wdm-primary-action" data-manager-view="cleaner">Clean Up</button>
+                <button class="wdm-primary-action" data-manager-view="planner">Breed Planner</button>
               </div>
               <span class="wdm-nav-divider" aria-hidden="true"></span>
               <div class="wdm-nav-group" aria-label="Setup and review">
-                <button data-manager-view="breeding">Breeding Plans</button>
+                <button data-manager-view="breeding">Breeding Projects</button>
                 <button data-manager-view="dex">Pokédex Tasks</button>
                 <button data-manager-view="specials">Special Pokémon</button>
               </div>
@@ -1881,10 +2863,12 @@
           #wd-family-decisions-v15 table{width:100%;border-collapse:collapse}#wd-family-decisions-v15 th{position:sticky;top:0;background:#19212d;color:#aeb9c8;text-align:left;padding:8px;border-bottom:1px solid #344154}
           #wd-family-decisions-v15 td{padding:8px;border-bottom:1px solid #252f3e;vertical-align:top}#wd-family-decisions-v15 td small{display:block;color:#8e9caf;margin-top:2px}
           #wd-family-decisions-v15 select{background:#0b1017;border:1px solid #344154;color:#fff;border-radius:6px;padding:5px 7px}
+          #wd-family-decisions-v15 .wdf-plan-target{color:#9fd6b9;margin-top:5px;line-height:1.35}.wdf-plan-state{display:inline-block;margin-left:6px;padding:1px 5px;border:1px solid #3f6b50;border-radius:999px;font-size:10px;color:#a8e8bc}
+          #wd-family-decisions-v15 .wdf-plan-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.wdf-plan-actions button{padding:4px 7px}.wdf-plan-actions .wdf-danger{border-color:#6e4148;color:#f0b3bb;background:#24191c}.wdf-plan-actions .wdf-danger:hover{background:#352126}
         `;
         document.head.appendChild(style);
         const panel=document.createElement('div');panel.id='wd-family-decisions-v15';
-        panel.innerHTML=`<div class="wdf-head"><div><b>Breeding Plans</b><small style="display:block;color:#9ba9bc">Tell the manager which Pokémon families you still want to breed.</small></div><div class="sp"></div><button id="wd-family-specials">Special Pokémon</button><button id="wd-family-dex">Pokédex Tasks</button><button id="wd-family-refresh">Reload</button><button id="wd-family-back">Back</button><button id="wd-family-close">×</button></div>
+        panel.innerHTML=`<div class="wdf-head"><div><b>Breeding Projects</b><small style="display:block;color:#9ba9bc">Saved Breed Planner targets and families you still want to breed.</small></div><div class="sp"></div><button id="wd-family-planner">Breed Planner</button><button id="wd-family-specials">Special Pokémon</button><button id="wd-family-dex">Pokédex Tasks</button><button id="wd-family-refresh">Reload</button><button id="wd-family-back">Back</button><button id="wd-family-close">×</button></div>
           <div class="wdf-note">
             Use this page to tell the cleaner which evolution lines you are still working on.
             <b>BREED NOW</b> means you are actively breeding that line; <b>TO-BE</b> means you want to breed it later.
@@ -1898,6 +2882,7 @@
           <div class="wdf-wrap"><table><thead><tr><th>Evolution family</th><th>Owned</th><th>Your plan</th><th>Copies</th><th>Box policy</th><th>Can be removed</th><th>Kept because</th></tr></thead><tbody id="wd-family-tbody"></tbody></table></div>`;
         managerAttachView(panel, '.wdf-head');
         document.getElementById('wd-family-filter').addEventListener('input',renderFamilyDecisionRows);
+        document.getElementById('wd-family-planner').addEventListener('click',()=>mountBreedPlannerPanel());
         document.getElementById('wd-family-specials').addEventListener('click',mountSpecialPanel);
         document.getElementById('wd-family-dex').addEventListener('click',mountDexTaskPanel);
         document.getElementById('wd-family-refresh').addEventListener('click',()=>window.__WORLDDEX_BOX_MANAGER_REFRESH?.());
@@ -1907,7 +2892,7 @@
           const q=String(document.getElementById('wd-family-filter')?.value||'').trim().toLowerCase();
           for(const f of familyDecisionRows()){
             if(q && !f.label.toLowerCase().includes(q) && ![...f.species].join(' ').toLowerCase().includes(q)) continue;
-            const mode=defaultFamilyMode(f);familyDecisions.set(f.key,{mode,boxPolicy:defaultBoxPolicy(f,mode),retention:RETENTION.AUTO});
+            const plan=breedPlans.get(f.key); const mode=plan ? breedPlanSuggestedMode(plan) : defaultFamilyMode(f);familyDecisions.set(f.key,{mode,boxPolicy:defaultBoxPolicy(f,mode),retention:RETENTION.AUTO});
           }
           saveFamilyDecisions();rebuildAnalysis(true);organizerPlan=null;renderFamilyDecisionRows();renderCandidateRows?.();updatePanelCounts?.();
         });
@@ -2143,6 +3128,7 @@
           const mode = familyMode(m);
 
           if (mode === FAMILY_MODE.KEEP_ALL) blocks.push('FAMILY_KEEP_ALL');
+          if (activeBreedPlanProtectedIds.has(id)) blocks.push('BREED_PLAN_RESERVED');
 
           for (const reason of absoluteReasonsFor(m)) {
             blocks.push(`ABSOLUTE_${reason}`);
@@ -2418,7 +3404,7 @@
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.15.1) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.17.1) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -2665,7 +3651,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.15.1
+      // BOX ORGANIZER v1.17.1
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -3229,7 +4215,7 @@
         const dexTasks=[];
         const release=[];
 
-        // If Breeding Plans are ignored for organization, ordinary Pokémon are
+        // If Breeding Projects are ignored for organization, ordinary Pokémon are
         // pooled by function instead of being kept as family blobs.
         const ordinaryFinal=[];
         const ordinaryStorage=[];
@@ -3244,7 +4230,7 @@
           if(cat==='DEX_TASK'){dexTasks.push(m);continue;}
           if(cat==='RELEASE'){release.push(m);continue;}
 
-          // Breeding Plans OFF means exactly that for the Organizer:
+          // Breeding Projects OFF means exactly that for the Organizer:
           // no family grouping, no family-size promotion, no family box policy.
           if(!prefs.keepBreedersTogether){
             if(cat==='FINAL') ordinaryFinal.push(m);
@@ -3384,7 +4370,7 @@
         if(battleReady.length) fixedDefs.push(...chunkSimple(battleReady,{kind:'BATTLE_READY',section:'BATTLE_READY',base:'BATTLE READY'}));
         if(dexTasks.length) fixedDefs.push(...chunkSimple(dexTasks,{kind:'DEX_TASK',section:'DEX_TASK',base:'POKÉDEX TASKS'}));
 
-        // Breeding Plans OFF: these are ordinary collection pools, not family boxes.
+        // Breeding Projects OFF: these are ordinary collection pools, not family boxes.
         if(ordinaryFinal.length) fixedDefs.push(
           ...chunkSimple(ordinaryFinal,{kind:'FINAL',section:'FINAL',base:'FINAL EVOLUTIONS'})
         );
@@ -4656,7 +5642,7 @@
             <button id="wd-organizer-refresh">Reload</button>
             <button id="wd-organizer-specials">Special Pokémon</button>
             <button id="wd-organizer-dex">Pokédex Tasks</button>
-            <button id="wd-organizer-decisions">Breeding Plans</button>
+            <button id="wd-organizer-decisions">Breeding Projects</button>
             <button id="wd-organizer-back">Clean Up</button>
             <button id="wd-organizer-collapse">Minimize</button>
             <button id="wd-organizer-close">×</button>
@@ -4670,7 +5656,7 @@
                 <input id="wd-organizer-cap" type="number" min="1" max="99" value="${initialCap}">
               </label>
               <label class="wdorg-field">Private breeding-family box from
-                <input id="wd-organizer-ownmin" type="number" min="1" max="100" value="12" title="Only used when Breeding Plans are enabled for organization.">
+                <input id="wd-organizer-ownmin" type="number" min="1" max="100" value="12" title="Only used when Breeding Projects are enabled for organization.">
               </label>
               <button id="wd-organizer-rebuild">Update preview</button>
               <button id="wd-organizer-export">Export plan</button>
@@ -4697,7 +5683,7 @@
                 <label><input id="wd-org-trained" type="checkbox"> Keep trained Pokémon together</label>
                 <label class="sub"><input id="wd-org-trained-ev" type="checkbox"> EV-trained</label>
                 <label class="sub"><input id="wd-org-trained-level" type="checkbox"> Level <input id="wd-org-level-min" type="number" min="1" max="100" value="80">+</label>
-                <label><input id="wd-org-breeders" type="checkbox"> Use Breeding Plans when organizing</label>
+                <label><input id="wd-org-breeders" type="checkbox"> Use Breeding Projects when organizing</label>
                 <label><input id="wd-org-sync" type="checkbox"> Keep Synchronize Pokémon together</label>
                 <label><input id="wd-org-dex" type="checkbox"> Keep Pokédex tasks together</label>
                 <label><input id="wd-org-special" type="checkbox"> Keep Special Pokémon together</label>
@@ -4723,7 +5709,7 @@
                   <b>Organization style:</b> Minimal keeps fewer separate groups; Recommended is the normal default; Functional separates every useful group.<br>
                   <b>Layout priority:</b> all three modes use the section order you choose. Balanced keeps that order while allowing gaps to save moves. Keep boxes ordered follows it as tightly as possible from the earliest boxes. Minimize moves treats it as a preference and may bend it only when doing so avoids extra moves.<br>
                   <b>Customize box order:</b> the editor only shows sections that actually exist in the current preview, so a Minimal setup stays minimal instead of showing unused categories.<br>
-                  <b>Breeding Plans:</b> when disabled, breeding families are treated like normal collection Pokémon for organization. Cleaner protection is unchanged.<br>
+                  <b>Breeding Projects:</b> when disabled, breeding families are treated like normal collection Pokémon for organization. Cleaner protection is unchanged.<br>
                   <b>Battle Ready:</b> a Pokémon qualifies through the selected EV or level rules.<br>
                   These settings only change placement. They never make a protected Pokémon eligible for release.
                 </div>
@@ -4799,7 +5785,7 @@
             ownMin.disabled=!p.keepBreedersTogether;
             ownMin.title=p.keepBreedersTogether
               ? 'Larger breeding families can receive their own box when there is enough room.'
-              : 'Ignored because Breeding Plans are not being used for organization.';
+              : 'Ignored because Breeding Projects are not being used for organization.';
           }
 
           const preset=document.getElementById('wd-organizer-preset');
@@ -4906,7 +5892,7 @@
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.15.1] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.17.1] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -5241,7 +6227,7 @@
             <button id="wd-cleaner-refresh" title="Check your current PC again and refresh all cleanup rules">Reload</button>
             <button id="wd-cleaner-specials">Special Pokémon</button>
             <button id="wd-cleaner-dex">Pokédex Tasks</button>
-            <button id="wd-cleaner-decisions">Breeding Plans</button>
+            <button id="wd-cleaner-decisions">Breeding Projects</button>
             <button id="wd-cleaner-organizer">Organize Boxes</button>
             <button id="wd-cleaner-collapse">Minimize</button>
             <button id="wd-cleaner-close">×</button>
@@ -5328,7 +6314,7 @@
       }
 
       window.__BOX_CLEANER = {
-        version: '1.12',
+        version: '1.16',
         cfg: CFG,
         get rows() { return rows; },
         get candidates() { return candidates; },
@@ -5345,6 +6331,8 @@
         openPanel: mountReviewPanel,
         refresh: () => window.__WORLDDEX_BOX_MANAGER_REFRESH?.(),
         openFamilyDecisions: mountFamilyDecisionPanel,
+        openBreedPlanner: mountBreedPlannerPanel,
+        get breedPlans() { return breedPlans; },
         openDexTasks: mountDexTaskPanel,
         get dexTasks() { return dexTaskCore.tasks; },
         auditDexTasks() {
@@ -5400,8 +6388,11 @@
             special:'specials',
             dex:'dex',
             'dex tasks':'dex',
+            planner:'planner',
+            'breed planner':'planner',
             breeding:'breeding',
-            breed:'breeding',
+            projects:'breeding',
+            breed:'planner',
             organizer:'organizer'
           };
           const target = aliases[key];
@@ -5474,7 +6465,7 @@
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.15.1] reload failed', err);
+      console.error('[Worlddex Box Manager v1.17.1] reload failed', err);
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
     } finally {
