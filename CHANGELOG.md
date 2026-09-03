@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.17.1
+
+- Added **Breed Planner**, which starts from the Pokémon / Nature / Ability / IV target you want and searches the Pokémon you actually own for useful breeding routes.
+- Breed Planner scans Pokémon in the PC, team and Nursery; Nursery-held Pokémon remain visible even though Worlddex removes them from `/api/box` while they are breeding.
+- Added Physical 5×31, Special 5×31 and 6×31 target presets plus custom 31-IV selection.
+- Added **Only same species** to constrain the full path to faster same-species pairings.
+- Added recommended Destiny Knot, Everstone and Power Item assignments.
+- Added overall **IV %** beside exact IV spreads to make suggested breeders easier to find in large boxes.
+- Added compact Top 3 pairing results with expandable details and cleaner handling of long planner information.
+- Added **Full Breeding Path** planning with explicit **Desired Output** conditions for intermediate offspring and recalculation after new eggs hatch.
+- Added an **Estimated roll** (`X% · ≈ 1 in N`) for the requested inheritance result. This is intentionally presented as an estimate until Worlddex's exact full Nursery formula is confirmed.
+- Same-species pairs receive a strong Egg-speed preference; different-species pairs are clearly flagged as slower.
+- Renamed **Breeding Plans** to **Breeding Projects** and connected saved planner targets to project state.
+- Saving a planner result normally creates a `TO-BE` project; matching parents detected in Nursery can synchronize it to `BREED NOW`.
+- Added **Remove project** without moving, releasing or otherwise modifying Pokémon.
+- Saved planner breeder IDs can protect required donors from Clean Up, including donors belonging to another evolution family.
+- Cleaned internal alternate labels such as `Dratini-Alt` from player-facing Breed Planner text.
+- Improved the floating window / navigation sizing and made planner cards expandable so important information remains readable without maximizing the panel.
+- Updated Safety / Transparency documentation and exact v1.17.1 verification hash.
+
 ## v1.15.1
 
 - Reordered the top navigation around how the manager is actually used.
