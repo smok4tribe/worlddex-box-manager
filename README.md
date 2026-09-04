@@ -4,7 +4,7 @@ Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
 It adds a floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
 
-> **Current version: v1.17.1**
+> **Current version: v1.18.2**
 
 ## What it can do
 
@@ -30,6 +30,8 @@ You can also:
 
 The Organizer never releases Pokémon. It only moves them between boxes and optionally renames boxes.
 
+Families marked **DONE** or **NO BREED** are treated as collection stock instead of active breeding blobs when Box Policy is `AUTO`. Their remaining Pokémon are pooled into **FINAL EVOLUTIONS** / **STORAGE** rather than automatically creating large dedicated family boxes. A manually selected `OWN BOX` still wins.
+
 ### Clean Up
 
 Reviews your PC and suggests duplicate Pokémon that may be safe to remove.
@@ -37,14 +39,23 @@ Reviews your PC and suggests duplicate Pokémon that may be safe to remove.
 The cleaner protects important copies, including:
 
 - nicknamed Pokémon;
-- Pokémon with 70%+ IVs;
 - favourites;
 - trained Pokémon;
 - Pokémon holding items;
 - useful Synchronize Pokémon;
 - Pokémon needed for breeding projects;
 - Pokémon needed to complete your Pokédex;
-- rare or hard-to-replace Pokémon covered by the Special Pokémon rules.
+- rare or hard-to-replace Pokémon covered by the Special Pokémon rules;
+- premium breeder / market stock.
+
+High-IV protection is intentionally different for completed breeding families:
+
+- outside a `DONE` family, the normal 70%+ IV protection still applies;
+- inside a `DONE` family, redundant ordinary 70–89.99% copies may be compacted after living-collection and quality-retention rules are applied;
+- **90%+ IV is always hard-protected**;
+- **every 4×31, 5×31 or 6×31 Pokémon is always hard-protected**, even below 90% overall IV.
+
+`DONE` also keeps a small useful quality collection of strong final evolutions instead of blindly preserving every merely-good duplicate.
 
 Nothing is released automatically. You review the list and confirm before anything is removed.
 
@@ -103,7 +114,8 @@ These choices help the Cleaner know which breeding stock still matters. Breeding
 Shows Pokémon that you still need to obtain through breeding or evolution.
 
 - **EVOLVE** keeps one suitable Pokémon for the missing evolution.
-- **BREED** keeps a compatible female + male pair when possible.
+- **BREED** now searches owned Pokémon across the PC, team and Nursery and chooses a legal donor with this practical priority: **same species → compatible shared Egg Group → Ditto fallback**.
+- Cross-family Egg-Group donors selected by an active Pokédex task are protected from Clean Up while the task is still needed.
 
 Completed tasks disappear after you reload the manager.
 
@@ -186,7 +198,7 @@ Even with these safeguards, this is an unofficial community tool. Review the cle
 
 ## Transparency
 
-The v1.17.1 source has been reviewed specifically for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
+The current v1.18.2 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
 
 What the script does:
 
@@ -195,7 +207,7 @@ What the script does:
 - writes only to Worlddex endpoints used for the features you explicitly run: `/api/box/release`, `/api/box/move` and `/api/pc/box-name`;
 - stores Box Manager preferences and project state locally in `localStorage`, including breeding / special retention choices, Breed Planner projects, Organizer settings, the active view and panel position.
 
-What is not present in v1.17.1:
+What is not present in v1.18.2:
 
 - no third-party URLs or external API calls;
 - no analytics, tracking, ads, webhooks or telemetry;
@@ -217,6 +229,6 @@ Worlddex updates can require changes to this tool.
 
 The repository verifies `box-manager.js` with a JavaScript syntax check and an exact SHA-256 check.
 
-Current v1.17.1 SHA-256:
+Current v1.18.2 SHA-256:
 
-`239060910a15e73963ca0e78408d5d4e29344c54f6b06ef313e9d2c08515a313`
+`e84a1bd7153f23c1074e7a0360a3df7dba39e22937cc44470e5722b4932b24c8`
