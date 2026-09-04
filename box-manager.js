@@ -60,6 +60,15 @@
         highFriendship: 220,
         protectHighIV: true,
         highIVPct: 70,
+        // DONE families are intentionally different: ordinary 70%+ IV is used
+        // to choose a compact quality collection, but genuinely premium market
+        // stock remains hard-protected even after the breeding project is done.
+        doneMarketHardIVPct: 90,
+        // Breeder / market safeguard: 4x31 or better is never cleanup material,
+        // even when the family is DONE and the overall IV percentage is below 90.
+        protectFourPerfectIVsHard: true,
+        doneQualityFinalCopies: 3,
+        doneQualityMinIVPct: 70,
         keepPerfectMaskMin: 2,
         keepFourPerfects: true
       };
@@ -204,7 +213,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.17.1 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.2 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -502,6 +511,10 @@
         if (CFG.protectHighIV && ivPct(m) >= CFG.highIVPct) {
           reasons.push(`HIGH_IV_${CFG.highIVPct}PLUS`);
         }
+        if (CFG.protectFourPerfectIVsHard && perfectCount(m) >= 4) {
+          const pc = perfectCount(m);
+          reasons.push(pc >= 6 ? 'SIX_PERFECT_IVS' : pc === 5 ? 'FIVE_PERFECT_IVS' : 'FOUR_PERFECT_IVS');
+        }
         if (CFG.protectHighFriendship && Number(m.friendship || 0) >= CFG.highFriendship) {
           reasons.push('HIGH_FRIENDSHIP');
         }
@@ -606,7 +619,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.17.1
+      // FAMILY / BREEDING DECISIONS v1.18.2
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -914,10 +927,30 @@
         return hard.reasons.filter(x => x !== 'DEX_EVOLUTION' && x !== 'DEX_BREED');
       }
 
+      function isHighIVProtectionReason(reason) {
+        return /^HIGH_IV_[0-9.]+PLUS$/i.test(String(reason || ''));
+      }
+
+      function effectiveAbsoluteReasonsFor(m) {
+        const reasons = absoluteReasonsFor(m);
+        // DONE collapses ordinary high-IV redundancy, but premium market stock
+        // still gets a real hard lock. 4x31+ breeders are already hard-protected
+        // globally by hardProtection(), even when their total IV% is below 90.
+        if (familyMode(m) === FAMILY_MODE.DONE) {
+          const out = reasons.filter(r => !isHighIVProtectionReason(r));
+          const marketPct = Number(CFG.doneMarketHardIVPct || 90);
+          if (CFG.protectHighIV && ivPct(m) >= marketPct) {
+            out.push(`MARKET_IV_${marketPct}PLUS`);
+          }
+          return out;
+        }
+        return reasons;
+      }
+
       function dynamicProtection(m) {
         const hard = hardById.get(Number(m.id)) || { reasons: [], evoMissing: [], breedMissing: [] };
         return {
-          reasons: absoluteReasonsFor(m),
+          reasons: effectiveAbsoluteReasonsFor(m),
           evoMissing: hard.evoMissing || [],
           breedMissing: hard.breedMissing || []
         };
@@ -1001,6 +1034,78 @@
             );
           }
         }
+        return { ids, why };
+      }
+
+
+      function computeDoneQualityCore() {
+        // DONE means the breeding job is finished. Keep a small, useful quality
+        // collection instead of hundreds of merely-good duplicates. The living
+        // collection core still preserves one copy of every exact species/form.
+        // Here we add at most a few strong FINAL evolutions, preferring different
+        // physical/special/perfect-IV profiles when possible.
+        const ids = new Set();
+        const why = new Map();
+
+        const add = (m, tag) => {
+          if (!m) return false;
+          const id = Number(m.id);
+          if (!Number.isFinite(id) || ids.has(id)) return false;
+          ids.add(id);
+          why.set(id, `DONE_QUALITY_FINAL_${tag}`);
+          return true;
+        };
+
+        for (const [key, info] of familyInfos.entries()) {
+          if (familyDecision(key).mode !== FAMILY_MODE.DONE) continue;
+
+          const finals = (info?.mons || [])
+            .filter(m => isFinalDex(m.dex))
+            .filter(m => ivPct(m) >= Number(CFG.doneQualityMinIVPct || CFG.highIVPct || 70));
+          if (!finals.length) continue;
+
+          // Existing non-IV hard locks count toward the compact final collection,
+          // but always preserve at least one genuinely strong final as well.
+          const lockedFinalCount = finals.filter(m => effectiveAbsoluteReasonsFor(m).length > 0).length;
+          const targetSlots = Math.max(1, Number(CFG.doneQualityFinalCopies || 3) - lockedFinalCount);
+
+          const ranked = [...finals].sort((a,b) =>
+            breederScore(b)-breederScore(a) ||
+            Number(b.lvl||0)-Number(a.lvl||0) ||
+            Number(a.id)-Number(b.id)
+          );
+
+          const chosen = [];
+          const choose = (m, tag) => {
+            if (!m || chosen.length >= targetSlots) return;
+            if (add(m, tag)) chosen.push(m);
+          };
+
+          choose(bestBy(finals, breederScore), 'BEST_OVERALL');
+          choose(bestBy(finals, physicalScore), 'PHYSICAL');
+          choose(bestBy(finals, specialScore), 'SPECIAL');
+
+          // Prefer genetically distinct profiles before simply filling with the
+          // next-highest percentage copy. This avoids keeping three near-clones.
+          const seenProfiles = new Set(chosen.map(m =>
+            `${perfectMask(m)}|${String(m.nature||'')}|${String(m.ability||'')}`
+          ));
+          for (const m of ranked) {
+            if (chosen.length >= targetSlots) break;
+            const profile = `${perfectMask(m)}|${String(m.nature||'')}|${String(m.ability||'')}`;
+            if (seenProfiles.has(profile)) continue;
+            if (add(m, 'DIVERSE')) {
+              chosen.push(m);
+              seenProfiles.add(profile);
+            }
+          }
+
+          for (const m of ranked) {
+            if (chosen.length >= targetSlots) break;
+            if (add(m, 'TOP')) chosen.push(m);
+          }
+        }
+
         return { ids, why };
       }
 
@@ -1092,6 +1197,7 @@
         const evoPools = new Map();
         const breedPools = new Map();
 
+        // Evolution candidates only need to come from the actionable PC pool.
         for (const m of mons) {
           const hard = hardById.get(Number(m.id)) || { evoMissing:[], breedMissing:[] };
 
@@ -1101,9 +1207,17 @@
             if (!evoPools.has(d)) evoPools.set(d, []);
             evoPools.get(d).push(m);
           }
+        }
 
-          for (const target of (hard.breedMissing || [])) {
-            const d = Number(target);
+        // Breeding tasks are ownership-aware, not box-only. Worlddex removes
+        // Nursery parents from /api/box, and useful donors can live in the team,
+        // another evolution family / Egg Group, or be Ditto. Build the target-
+        // family producer pool from Box + Team + Nursery, then choose the donor
+        // globally below.
+        for (const m of allOwned) {
+          if (!m?.id || Number(m.dex) === 132 || !canBreedSpecies(m)) continue;
+          for (const root of rootsOf(m.dex)) {
+            const d = Number(root);
             if (!Number.isFinite(d) || caught.has(d)) continue;
             if (!breedPools.has(d)) breedPools.set(d, []);
             breedPools.get(d).push(m);
@@ -1167,77 +1281,130 @@
           });
         }
 
-        // ── BREED: preserve ♀ + ♂ whenever the owned pool allows it ─
+        // ── BREED: target-family producer + best legal global donor ─────────
+        // Priority is deliberately practical for Worlddex:
+        //   1) same species (fastest Egg production)
+        //   2) another compatible male sharing an Egg Group
+        //   3) Ditto fallback
+        // The chosen donor is added to breedParents too, so a useful cross-family
+        // donor sitting in the PC cannot be cleaned while the Dex task is active.
         for (const [target,poolRaw] of breedPools.entries()) {
           const pool = [...new Map(
             poolRaw.map(m => [Number(m.id), m])
-          ).values()];
+          ).values()].sort(parentRank);
 
-          const females = pool.filter(m => m.gender === 'f').sort(parentRank);
-          const males = pool.filter(m => m.gender === 'm').sort(parentRank);
-          const neutral = pool
-            .filter(m => m.gender !== 'f' && m.gender !== 'm')
-            .sort(parentRank);
+          const pairCandidates = [];
+          const pairKey = new Set();
 
-          // Find the strongest actually compatible F/M pair rather than just the
-          // individually strongest two if their egg groups somehow differ.
-          let bestPair = null;
-          for (const f of females) {
-            for (const m of males) {
-              if (!shareEggGroup(f, m)) continue;
-              const score =
-                breederScore(f) + breederScore(m) +
-                (Number(f.lvl||0) + Number(m.lvl||0)) / 1000;
-              if (!bestPair || score > bestPair.score) {
-                bestPair = { female:f, male:m, score };
+          const addPair = (producer, donor, tier, kind, sharedGroups=[]) => {
+            if (!producer || !donor) return;
+            const a = Number(producer.id), b = Number(donor.id);
+            if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) return;
+            const key = `${a}|${b}`;
+            if (pairKey.has(key)) return;
+            pairKey.add(key);
+
+            // Tier dominates quality so we do not pick a gorgeous Ditto over an
+            // actually-fast same-species pair. Quality only breaks ties inside
+            // the same compatibility class.
+            const locationBonus =
+              (ownedLocation(producer) === 'NURSERY' ? 8 : 0) +
+              (ownedLocation(donor) === 'NURSERY' ? 8 : 0);
+            const score =
+              tier * 1_000_000 +
+              breederScore(producer) * 100 +
+              breederScore(donor) * 100 +
+              locationBonus;
+
+            pairCandidates.push({ producer, donor, tier, kind, sharedGroups, score });
+          };
+
+          for (const producer of pool) {
+            // Cross-species breeding produces the female species/family, so a
+            // female target-family parent may use any compatible owned male.
+            if (producer.gender === 'f') {
+              for (const donor of allOwned) {
+                if (!donor?.id || Number(donor.id) === Number(producer.id)) continue;
+
+                if (Number(donor.dex) === 132) {
+                  addPair(producer, donor, 1, 'DITTO');
+                  continue;
+                }
+
+                if (donor.gender !== 'm' || !canBreedSpecies(donor)) continue;
+                if (!shareEggGroup(producer, donor)) continue;
+
+                const sameSpecies = Number(producer.dex) === Number(donor.dex);
+                const sharedGroups = groupsOf(producer)
+                  .filter(g => g !== 'no-eggs' && g !== 'ditto')
+                  .filter(g => groupsOf(donor).includes(g));
+                addPair(
+                  producer,
+                  donor,
+                  sameSpecies ? 3 : 2,
+                  sameSpecies ? 'SAME_SPECIES' : 'EGG_GROUP',
+                  [...new Set(sharedGroups)]
+                );
+              }
+            } else {
+              // Male / genderless target-family parents need Ditto to produce
+              // their own family. A random compatible female would produce hers.
+              for (const ditto of dittos) {
+                if (Number(ditto.id) === Number(producer.id)) continue;
+                addPair(producer, ditto, 1, 'DITTO');
               }
             }
           }
 
+          pairCandidates.sort((a,b) =>
+            b.score-a.score ||
+            parentRank(a.producer,b.producer) ||
+            parentRank(a.donor,b.donor)
+          );
+
+          const bestPair = pairCandidates[0] || null;
           let selected = [];
           let pairStatus = '';
+          let note = '';
+          const missingName = dexToName.get(target) || `#${target}`;
 
           if (bestPair) {
-            selected = [bestPair.female, bestPair.male];
-            pairStatus = 'PAIR_OK';
-          } else {
-            // No compatible M/F pair currently exists in the box. Preserve the
-            // best available Dex parent instead of deleting the last usable one.
-            // Ditto is separately hard-protected elsewhere.
-            const fallback = [...females, ...males, ...neutral].sort(parentRank)[0];
-            if (fallback) selected = [fallback];
+            selected = [bestPair.producer, bestPair.donor];
+            pairStatus = bestPair.kind;
 
-            if (!females.length && !males.length) pairStatus = 'GENDERLESS_OR_DITTO';
-            else if (!females.length) pairStatus = 'MISSING_FEMALE';
-            else if (!males.length) pairStatus = 'MISSING_MALE';
-            else pairStatus = 'NO_COMPATIBLE_MF_PAIR';
+            if (bestPair.kind === 'SAME_SPECIES') {
+              note = `Breed ${labelMon(bestPair.producer)} + ${labelMon(bestPair.donor)} to obtain uncaught ${missingName} · same species (fast)`;
+            } else if (bestPair.kind === 'EGG_GROUP') {
+              const groups = bestPair.sharedGroups.length ? ` · shared Egg Group: ${bestPair.sharedGroups.join(', ')}` : '';
+              note = `Breed ${labelMon(bestPair.producer)} + ${labelMon(bestPair.donor)} to obtain uncaught ${missingName}${groups}`;
+            } else {
+              note = `Breed ${labelMon(bestPair.producer)} + ${labelMon(bestPair.donor)} to obtain uncaught ${missingName} · Ditto fallback`;
+            }
+          } else {
+            // Still preserve the strongest owned target-family parent. This makes
+            // the missing requirement explicit without pretending a legal pair
+            // exists today.
+            const fallback = pool[0];
+            if (fallback) selected = [fallback];
+            pairStatus = 'MISSING_DONOR';
+
+            if (fallback?.gender === 'f') {
+              note = `Breed task for ${missingName}: keeping ${labelMon(fallback)}, but no compatible owned ♂ Egg-Group donor or Ditto is currently available`;
+            } else if (fallback) {
+              note = `Breed task for ${missingName}: keeping ${labelMon(fallback)}, but this parent needs an owned Ditto to produce its own family`;
+            }
           }
 
           if (!selected.length) continue;
 
           for (const p of selected) addMap(breedParents, Number(p.id), target);
 
-          const missingName = dexToName.get(target) || `#${target}`;
           const labels = selected.map(labelMon);
-
-          let note;
-          if (bestPair) {
-            note = `Breed ${labelMon(bestPair.female)} + ${labelMon(bestPair.male)} to obtain uncaught ${missingName}`;
-          } else if (pairStatus === 'MISSING_FEMALE') {
-            note = `Breed task for ${missingName}: keeping ${labels[0]} but no eligible ♀ parent is currently owned in this Dex-parent pool`;
-          } else if (pairStatus === 'MISSING_MALE') {
-            note = `Breed task for ${missingName}: keeping ${labels[0]} but no eligible ♂ parent is currently owned in this Dex-parent pool`;
-          } else if (pairStatus === 'GENDERLESS_OR_DITTO') {
-            note = `Breed task for ${missingName}: keeping ${labels[0]} · genderless/unisex line, use Ditto where applicable`;
-          } else {
-            note = `Breed task for ${missingName}: no compatible owned ♀/♂ pair found; keeping ${labels[0]} as the safest available parent`;
-          }
-
           tasks.push({
             Type:'BREED',
             MissingDex:target,
             Missing:missingName,
-            UseID:Number(selected[0].id), // backwards-compatible primary ID
+            UseID:Number(selected[0].id),
             UseIDs:selected.map(m => Number(m.id)),
             Use:selected.map(m => m.species).join(' + '),
             UseLabel:labels.join(' + '),
@@ -1263,6 +1430,7 @@
       let candidateById = new Map();
       let candidateFingerprints = new Map();
       let syncUtilityCore = { ids:new Set(), why:new Map() };
+      let doneQualityCore = { ids:new Set(), why:new Map() };
       let livingDexCore = { ids:new Set(), why:new Map() };
       let retentionCore = { ids:new Set(), why:new Map() };
       let dexTaskCore = { evoParents:new Map(), breedParents:new Map(), tasks:[] };
@@ -1291,6 +1459,7 @@
         activeEggGroups = activeBreedingEggGroups();
         activeBreedPlanProtectedIds = collectBreedPlanProtectedIds();
         syncUtilityCore = computeSyncUtilityCore();
+        doneQualityCore = computeDoneQualityCore();
         retentionCore = computeRetentionCore();
         livingDexCore = computeLivingDexCore();
         dexTaskCore = computeDexTaskCore();
@@ -1326,6 +1495,8 @@
               .map(d => dexToName.get(Number(d)) || `#${d}`).join('+');
           } else if (syncUtilityCore.ids.has(Number(m.id))) {
             reason = syncUtilityCore.why.get(Number(m.id)) || 'SYNCRO_CORE';
+          } else if (doneQualityCore.ids.has(Number(m.id))) {
+            reason = doneQualityCore.why.get(Number(m.id)) || 'DONE_QUALITY_FINAL';
           } else if (retentionCore.ids.has(Number(m.id))) {
             reason = retentionCore.why.get(Number(m.id)) || 'RETENTION_CORE';
           } else if (livingDexCore.ids.has(Number(m.id))) {
@@ -1339,8 +1510,10 @@
             // representative, Syncro utility slot, Dex task mon and absolute
             // protections are accounted for, duplicates are release candidates.
             status = 'RELEASE_CANDIDATE';
-            if (mode === FAMILY_MODE.DONE) reason = 'FAMILY_DONE_DUPLICATE';
-            else if (mode === FAMILY_MODE.NO_BREED) reason = 'NO_BREED_DUPLICATE';
+            if (mode === FAMILY_MODE.DONE) {
+              const wasHighIV = absoluteReasonsFor(m).some(isHighIVProtectionReason);
+              reason = wasHighIV ? 'FAMILY_DONE_HIGH_IV_REDUNDANT' : 'FAMILY_DONE_DUPLICATE';
+            } else if (mode === FAMILY_MODE.NO_BREED) reason = 'NO_BREED_DUPLICATE';
             else if (mode === FAMILY_MODE.AUTO) reason = 'AUTO_COLLECTION_DUPLICATE';
             else reason = 'BREEDING_REDUNDANT_OUTSIDE_CORE';
 
@@ -1350,6 +1523,7 @@
                 retentionCore.ids.has(Number(x.id)) ||
                 livingDexCore.ids.has(Number(x.id)) ||
                 syncUtilityCore.ids.has(Number(x.id)) ||
+                doneQualityCore.ids.has(Number(x.id)) ||
                 dexTaskCore.evoParents.has(Number(x.id)) ||
                 dexTaskCore.breedParents.has(Number(x.id)) ||
                 (explicitBreeding && exactCore.has(Number(x.id)))
@@ -1421,7 +1595,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.17.1 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.2 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1473,7 +1647,7 @@
         return [cols.join('\t'), ...list.map(r => cols.map(c => clean(r[c])).join('\t'))].join('\n');
       }
 
-      function download(list = rows, filename = 'worlddex_box_manager_v1_15_1_analysis.tsv') {
+      function download(list = rows, filename = 'worlddex_box_manager_v1_18_analysis.tsv') {
         const blob = new Blob([toTSV(list)], { type:'text/tab-separated-values;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -1626,7 +1800,7 @@ No Pokémon will be moved or released.`)) return;
 
 
       // ─────────────────────────────────────────────────────────────
-      // BREED PLANNER v1.17.1
+      // BREED PLANNER v1.18.2
       // Goal-first planner: choose the Pokémon you want, then rank legal pairs
       // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
       // preference because Worlddex warns that different species produce Eggs
@@ -2711,7 +2885,7 @@ No Pokémon will be moved or released.`)) return;
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.17.1</b>
+              <b>Worlddex Box Manager v1.18.2</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
@@ -2874,7 +3048,8 @@ No Pokémon will be moved or released.`)) return;
             <b>BREED NOW</b> means you are actively breeding that line; <b>TO-BE</b> means you want to breed it later.
             <b>DONE</b> means the project is finished, while <b>NO BREED</b> means you only want a clean collection copy.
             <b>KEEP ALL</b> prevents cleanup for that line.
-            Pokémon with a nickname or at least <b>70% IVs</b> are always kept.
+            Nicknamed Pokémon are always kept. Pokémon with at least <b>70% IVs</b> are normally protected.
+            For a <b>DONE</b> family, ordinary 70–89.99% IV copies can be compacted when redundant, while <b>90%+ IV or any 4×31+ Pokémon remains hard-protected</b> as breeder / market stock.
             Pokédex completion is handled separately in <b>Pokédex Tasks</b>, so you can immediately see what still needs breeding or evolving.
             <b>Box policy</b> only affects organization: AUTO chooses for you, OWN BOX forces a dedicated family box, and CAN MIX allows the family to share.
           </div>
@@ -3130,8 +3305,12 @@ No Pokémon will be moved or released.`)) return;
           if (mode === FAMILY_MODE.KEEP_ALL) blocks.push('FAMILY_KEEP_ALL');
           if (activeBreedPlanProtectedIds.has(id)) blocks.push('BREED_PLAN_RESERVED');
 
-          for (const reason of absoluteReasonsFor(m)) {
+          for (const reason of effectiveAbsoluteReasonsFor(m)) {
             blocks.push(`ABSOLUTE_${reason}`);
+          }
+
+          if (doneQualityCore.ids.has(id)) {
+            blocks.push(doneQualityCore.why.get(id) || 'DONE_QUALITY_FINAL');
           }
 
           if (syncUtilityCore.ids.has(id)) {
@@ -3404,7 +3583,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.17.1) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.2) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -3651,7 +3830,7 @@ No Pokémon will be moved or released.`)) return;
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.17.1
+      // BOX ORGANIZER v1.18.2
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -4215,8 +4394,8 @@ No Pokémon will be moved or released.`)) return;
         const dexTasks=[];
         const release=[];
 
-        // If Breeding Projects are ignored for organization, ordinary Pokémon are
-        // pooled by function instead of being kept as family blobs.
+        // Generic collection pools: used when Breeding Projects are ignored and
+        // also by DONE / NO BREED families that are no longer active breeding blobs.
         const ordinaryFinal=[];
         const ordinaryStorage=[];
 
@@ -4242,17 +4421,18 @@ No Pokémon will be moved or released.`)) return;
           const mode=familyMode(m);
           const forceOwn=familyBoxPolicy(familyKey)===BOX_POLICY.OWN;
 
-          // Finished / unwanted lines should not remain artificial "family blobs".
-          // Let their final evolutions go to FINAL and their remaining living-Dex
-          // representatives go to STORAGE. A manually forced OWN BOX still wins.
-          const splitByFunction =
-            !forceOwn &&
-            (mode===FAMILY_MODE.DONE || mode===FAMILY_MODE.NO_BREED);
+          // DONE / NO BREED are collection states, not active breeding blobs.
+          // Unless the player explicitly forces OWN BOX, pool them directly into
+          // the generic FINAL / STORAGE sections. This prevents huge completed
+          // families from creating Charmander 1 / Charmander 2 style boxes and
+          // keeps the physical layout aligned with the chosen category order.
+          if (!forceOwn && (mode===FAMILY_MODE.DONE || mode===FAMILY_MODE.NO_BREED)) {
+            if (cat==='FINAL') ordinaryFinal.push(m);
+            else ordinaryStorage.push(m);
+            continue;
+          }
 
-          const groupKey = splitByFunction
-            ? `${familyKey}::${cat}`
-            : familyKey;
-
+          const groupKey = familyKey;
           if(!familyGroups.has(groupKey)) familyGroups.set(groupKey,[]);
           familyGroups.get(groupKey).push(m);
         }
@@ -4370,7 +4550,7 @@ No Pokémon will be moved or released.`)) return;
         if(battleReady.length) fixedDefs.push(...chunkSimple(battleReady,{kind:'BATTLE_READY',section:'BATTLE_READY',base:'BATTLE READY'}));
         if(dexTasks.length) fixedDefs.push(...chunkSimple(dexTasks,{kind:'DEX_TASK',section:'DEX_TASK',base:'POKÉDEX TASKS'}));
 
-        // Breeding Projects OFF: these are ordinary collection pools, not family boxes.
+        // Ordinary collection pools (Projects OFF plus DONE / NO BREED families).
         if(ordinaryFinal.length) fixedDefs.push(
           ...chunkSimple(ordinaryFinal,{kind:'FINAL',section:'FINAL',base:'FINAL EVOLUTIONS'})
         );
@@ -4668,7 +4848,7 @@ No Pokémon will be moved or released.`)) return;
         const blob = new Blob([organizerPlanTSV(plan)], { type:'text/tab-separated-values;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'worlddex_box_organizer_v1_15_1_plan.tsv';
+        a.download = 'worlddex_box_organizer_v1_18_plan.tsv';
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       }
@@ -5892,7 +6072,7 @@ No Pokémon will be moved or released.`)) return;
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.17.1] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.18.2] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -6260,7 +6440,7 @@ No Pokémon will be moved or released.`)) return;
               </table>
             </div>
             <div class="wdcl-foot">
-              <div class="wdcl-note"><b>Nothing is removed automatically.</b> The list above is only a preview. You choose which Pokémon to remove and confirm the action before it starts. Protected Pokémon — including nicknamed Pokémon, high-IV Pokémon, favourites, trained Pokémon, breeding needs and Pokédex needs — are kept out of the cleanup list. If your PC changes while this window is open, press <b>Reload</b> before removing anything.</div>
+              <div class="wdcl-note"><b>Nothing is removed automatically.</b> The list above is only a preview. You choose which Pokémon to remove and confirm the action before it starts. Protected Pokémon — including nicknamed Pokémon, favourites, trained Pokémon, breeding needs and Pokédex needs — are kept out of the cleanup list. High-IV Pokémon are normally protected too; <b>DONE</b> families compact redundant ordinary 70–89.99% copies, while <b>90%+ IV and every 4×31+ Pokémon remain hard-protected</b> for breeder / market value. If your PC changes while this window is open, press <b>Reload</b> before removing anything.</div>
               <div id="wd-cleaner-log"></div>
             </div>
           </div>
@@ -6288,7 +6468,7 @@ No Pokémon will be moved or released.`)) return;
         });
 
         document.getElementById('wd-cleaner-export').addEventListener('click', () => {
-          download(candidates, 'worlddex_cleanup_candidates_v1_15_1.tsv');
+          download(candidates, 'worlddex_cleanup_candidates_v1_18.tsv');
         });
 
         document.getElementById('wd-cleaner-release-btn').addEventListener('click', releaseSelected);
@@ -6408,8 +6588,8 @@ No Pokémon will be moved or released.`)) return;
         setOrganizerPreferences(next={}) {
           organizerPrefsState=normalizeOrganizerPrefs({...organizerPrefsState,...next,preset:'custom'}); saveOrganizerPrefs(); organizerPlan=null; return organizerPrefs();
         },
-        download: () => download(rows, 'worlddex_box_manager_v1_15_1_analysis.tsv'),
-        downloadCandidates: () => download(candidates, 'worlddex_cleanup_candidates_v1_15_1.tsv'),
+        download: () => download(rows, 'worlddex_box_manager_v1_18_analysis.tsv'),
+        downloadCandidates: () => download(candidates, 'worlddex_cleanup_candidates_v1_18.tsv'),
         descendants,
         rootsOf,
         groupsOf,
@@ -6465,7 +6645,7 @@ No Pokémon will be moved or released.`)) return;
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.17.1] reload failed', err);
+      console.error('[Worlddex Box Manager v1.18.2] reload failed', err);
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
     } finally {
