@@ -1,0 +1,300 @@
+--- a/box-manager.js
++++ b/box-manager.js
+@@ -60,6 +60,15 @@
+         highFriendship: 220,
+         protectHighIV: true,
+         highIVPct: 70,
++        // DONE families are intentionally different: ordinary 70%+ IV is used
++        // to choose a compact quality collection, but genuinely premium market
++        // stock remains hard-protected even after the breeding project is done.
++        doneMarketHardIVPct: 90,
++        // Breeder / market safeguard: 4x31 or better is never cleanup material,
++        // even when the family is DONE and the overall IV percentage is below 90.
++        protectFourPerfectIVsHard: true,
++        doneQualityFinalCopies: 3,
++        doneQualityMinIVPct: 70,
+         keepPerfectMaskMin: 2,
+         keepFourPerfects: true
+       };
+@@ -204,7 +213,7 @@
+       }
+ 
+       console.log(
+-        '%cBOX MANAGER v1.17.1 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
++        '%cBOX MANAGER v1.18.2 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+         'font-weight:bold;color:#8be9fd;font-size:14px'
+       );
+       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
+@@ -502,6 +511,10 @@
+         if (CFG.protectHighIV && ivPct(m) >= CFG.highIVPct) {
+           reasons.push(`HIGH_IV_${CFG.highIVPct}PLUS`);
+         }
++        if (CFG.protectFourPerfectIVsHard && perfectCount(m) >= 4) {
++          const pc = perfectCount(m);
++          reasons.push(pc >= 6 ? 'SIX_PERFECT_IVS' : pc === 5 ? 'FIVE_PERFECT_IVS' : 'FOUR_PERFECT_IVS');
++        }
+         if (CFG.protectHighFriendship && Number(m.friendship || 0) >= CFG.highFriendship) {
+           reasons.push('HIGH_FRIENDSHIP');
+         }
+@@ -606,7 +619,7 @@
+       }
+ 
+       // ─────────────────────────────────────────────────────────────
+-      // FAMILY / BREEDING DECISIONS v1.17.1
++      // FAMILY / BREEDING DECISIONS v1.18.2
+       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
+       // Charmeleon/Charizard, etc.). The user decides whether each line is
+       // actively being bred, parked for later, finished, or not worth breeding.
+@@ -914,10 +927,30 @@
+         return hard.reasons.filter(x => x !== 'DEX_EVOLUTION' && x !== 'DEX_BREED');
+       }
+ 
++      function isHighIVProtectionReason(reason) {
++        return /^HIGH_IV_[0-9.]+PLUS$/i.test(String(reason || ''));
++      }
++
++      function effectiveAbsoluteReasonsFor(m) {
++        const reasons = absoluteReasonsFor(m);
++        // DONE collapses ordinary high-IV redundancy, but premium market stock
++        // still gets a real hard lock. 4x31+ breeders are already hard-protected
++        // globally by hardProtection(), even when their total IV% is below 90.
++        if (familyMode(m) === FAMILY_MODE.DONE) {
++          const out = reasons.filter(r => !isHighIVProtectionReason(r));
++          const marketPct = Number(CFG.doneMarketHardIVPct || 90);
++          if (CFG.protectHighIV && ivPct(m) >= marketPct) {
++            out.push(`MARKET_IV_${marketPct}PLUS`);
++          }
++          return out;
++        }
++        return reasons;
++      }
++
+       function dynamicProtection(m) {
+         const hard = hardById.get(Number(m.id)) || { reasons: [], evoMissing: [], breedMissing: [] };
+         return {
+-          reasons: absoluteReasonsFor(m),
++          reasons: effectiveAbsoluteReasonsFor(m),
+           evoMissing: hard.evoMissing || [],
+           breedMissing: hard.breedMissing || []
+         };
+@@ -1005,6 +1038,78 @@
+       }
+ 
+ 
++      function computeDoneQualityCore() {
++        // DONE means the breeding job is finished. Keep a small, useful quality
++        // collection instead of hundreds of merely-good duplicates. The living
++        // collection core still preserves one copy of every exact species/form.
++        // Here we add at most a few strong FINAL evolutions, preferring different
++        // physical/special/perfect-IV profiles when possible.
++        const ids = new Set();
++        const why = new Map();
++
++        const add = (m, tag) => {
++          if (!m) return false;
++          const id = Number(m.id);
++          if (!Number.isFinite(id) || ids.has(id)) return false;
++          ids.add(id);
++          why.set(id, `DONE_QUALITY_FINAL_${tag}`);
++          return true;
++        };
++
++        for (const [key, info] of familyInfos.entries()) {
++          if (familyDecision(key).mode !== FAMILY_MODE.DONE) continue;
++
++          const finals = (info?.mons || [])
++            .filter(m => isFinalDex(m.dex))
++            .filter(m => ivPct(m) >= Number(CFG.doneQualityMinIVPct || CFG.highIVPct || 70));
++          if (!finals.length) continue;
++
++          // Existing non-IV hard locks count toward the compact final collection,
++          // but always preserve at least one genuinely strong final as well.
++          const lockedFinalCount = finals.filter(m => effectiveAbsoluteReasonsFor(m).length > 0).length;
++          const targetSlots = Math.max(1, Number(CFG.doneQualityFinalCopies || 3) - lockedFinalCount);
++
++          const ranked = [...finals].sort((a,b) =>
++            breederScore(b)-breederScore(a) ||
++            Number(b.lvl||0)-Number(a.lvl||0) ||
++            Number(a.id)-Number(b.id)
++          );
++
++          const chosen = [];
++          const choose = (m, tag) => {
++            if (!m || chosen.length >= targetSlots) return;
++            if (add(m, tag)) chosen.push(m);
++          };
++
++          choose(bestBy(finals, breederScore), 'BEST_OVERALL');
++          choose(bestBy(finals, physicalScore), 'PHYSICAL');
++          choose(bestBy(finals, specialScore), 'SPECIAL');
++
++          // Prefer genetically distinct profiles before simply filling with the
++          // next-highest percentage copy. This avoids keeping three near-clones.
++          const seenProfiles = new Set(chosen.map(m =>
++            `${perfectMask(m)}|${String(m.nature||'')}|${String(m.ability||'')}`
++          ));
++          for (const m of ranked) {
++            if (chosen.length >= targetSlots) break;
++            const profile = `${perfectMask(m)}|${String(m.nature||'')}|${String(m.ability||'')}`;
++            if (seenProfiles.has(profile)) continue;
++            if (add(m, 'DIVERSE')) {
++              chosen.push(m);
++              seenProfiles.add(profile);
++            }
++          }
++
++          for (const m of ranked) {
++            if (chosen.length >= targetSlots) break;
++            if (add(m, 'TOP')) chosen.push(m);
++          }
++        }
++
++        return { ids, why };
++      }
++
++
+       function retentionEntryKey(m) {
+         return `${Number(m.dex)}|${m.form == null ? '' : String(m.form)}`;
+       }
+@@ -1092,6 +1197,7 @@
+         const evoPools = new Map();
+         const breedPools = new Map();
+ 
++        // Evolution candidates only need to come from the actionable PC pool.
+         for (const m of mons) {
+           const hard = hardById.get(Number(m.id)) || { evoMissing:[], breedMissing:[] };
+ 
+@@ -1101,9 +1207,17 @@
+             if (!evoPools.has(d)) evoPools.set(d, []);
+             evoPools.get(d).push(m);
+           }
++        }
+ 
+-          for (const target of (hard.breedMissing || [])) {
+-            const d = Number(target);
++        // Breeding tasks are ownership-aware, not box-only. Worlddex removes
++        // Nursery parents from /api/box, and useful donors can live in the team,
++        // another evolution family / Egg Group, or be Ditto. Build the target-
++        // family producer pool from Box + Team + Nursery, then choose the donor
++        // globally below.
++        for (const m of allOwned) {
++          if (!m?.id || Number(m.dex) === 132 || !canBreedSpecies(m)) continue;
++          for (const root of rootsOf(m.dex)) {
++            const d = Number(root);
+             if (!Number.isFinite(d) || caught.has(d)) continue;
+             if (!breedPools.has(d)) breedPools.set(d, []);
+             breedPools.get(d).push(m);
+@@ -1167,77 +1281,130 @@
+           });
+         }
+ 
+-        // ── BREED: preserve ♀ + ♂ whenever the owned pool allows it ─
++        // ── BREED: target-family producer + best legal global donor ─────────
++        // Priority is deliberately practical for Worlddex:
++        //   1) same species (fastest Egg production)
++        //   2) another compatible male sharing an Egg Group
++        //   3) Ditto fallback
++        // The chosen donor is added to breedParents too, so a useful cross-family
++        // donor sitting in the PC cannot be cleaned while the Dex task is active.
+         for (const [target,poolRaw] of breedPools.entries()) {
+           const pool = [...new Map(
+             poolRaw.map(m => [Number(m.id), m])
+-          ).values()];
++          ).values()].sort(parentRank);
++
++          const pairCandidates = [];
++          const pairKey = new Set();
+ 
+-          const females = pool.filter(m => m.gender === 'f').sort(parentRank);
+-          const males = pool.filter(m => m.gender === 'm').sort(parentRank);
+-          const neutral = pool
+-            .filter(m => m.gender !== 'f' && m.gender !== 'm')
+-            .sort(parentRank);
+-
+-          // Find the strongest actually compatible F/M pair rather than just the
+-          // individually strongest two if their egg groups somehow differ.
+-          let bestPair = null;
+-          for (const f of females) {
+-            for (const m of males) {
+-              if (!shareEggGroup(f, m)) continue;
+-              const score =
+-                breederScore(f) + breederScore(m) +
+-                (Number(f.lvl||0) + Number(m.lvl||0)) / 1000;
+-              if (!bestPair || score > bestPair.score) {
+-                bestPair = { female:f, male:m, score };
++          const addPair = (producer, donor, tier, kind, sharedGroups=[]) => {
++            if (!producer || !donor) return;
++            const a = Number(producer.id), b = Number(donor.id);
++            if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) return;
++            const key = `${a}|${b}`;
++            if (pairKey.has(key)) return;
++            pairKey.add(key);
++
++            // Tier dominates quality so we do not pick a gorgeous Ditto over an
++            // actually-fast same-species pair. Quality only breaks ties inside
++            // the same compatibility class.
++            const locationBonus =
++              (ownedLocation(producer) === 'NURSERY' ? 8 : 0) +
++              (ownedLocation(donor) === 'NURSERY' ? 8 : 0);
++            const score =
++              tier * 1_000_000 +
++              breederScore(producer) * 100 +
++              breederScore(donor) * 100 +
++              locationBonus;
++
++            pairCandidates.push({ producer, donor, tier, kind, sharedGroups, score });
++          };
++
++          for (const producer of pool) {
++            // Cross-species breeding produces the female species/family, so a
++            // female target-family parent may use any compatible owned male.
++            if (producer.gender === 'f') {
++              for (const donor of allOwned) {
++                if (!donor?.id || Number(donor.id) === Number(producer.id)) continue;
++
++                if (Number(donor.dex) === 132) {
++                  addPair(producer, donor, 1, 'DITTO');
++                  continue;
++                }
++
++                if (donor.gender !== 'm' || !canBreedSpecies(donor)) continue;
++                if (!shareEggGroup(producer, donor)) continue;
++
++                const sameSpecies = Number(producer.dex) === Number(donor.dex);
++                const sharedGroups = groupsOf(producer)
++                  .filter(g => g !== 'no-eggs' && g !== 'ditto')
++                  .filter(g => groupsOf(donor).includes(g));
++                addPair(
++                  producer,
++                  donor,
++                  sameSpecies ? 3 : 2,
++                  sameSpecies ? 'SAME_SPECIES' : 'EGG_GROUP',
++                  [...new Set(sharedGroups)]
++                );
++              }
++            } else {
++              // Male / genderless target-family parents need Ditto to produce
++              // their own family. A random compatible female would produce hers.
++              for (const ditto of dittos) {
++                if (Number(ditto.id) === Number(producer.id)) continue;
++                addPair(producer, ditto, 1, 'DITTO');
+               }
+             }
+           }
+ 
++          pairCandidates.sort((a,b) =>
++            b.score-a.score ||
++            parentRank(a.producer,b.producer) ||
++            parentRank(a.donor,b.donor)
++          );
++
++          const bestPair = pairCandidates[0] || null;
+           let selected = [];
+           let pairStatus = '';
++          let note = '';
++          const missingName = dexToName.get(target) || `#${target}`;
+ 
+           if (bestPair) {
+-            selected = [bestPair.female, bestPair.male];
+-            pairStatus = 'PAIR_OK';
++            selected = [bestPair.producer, bestPair.donor];
