@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.18.2
+
+- Reworked **DONE** family cleanup so finished breeding lines no longer keep every ordinary 70%+ IV duplicate forever.
+- Added compact quality retention for completed lines while still keeping living-collection copies and existing hard protections.
+- Added permanent breeder / market safeguards: **90%+ IV** is always hard-protected, and every **4×31 / 5×31 / 6×31** Pokémon is always hard-protected even when its overall IV percentage is below 90%.
+- Added clear protection reasons for premium perfect-IV stock, including `FOUR_PERFECT_IVS`, `FIVE_PERFECT_IVS` and `SIX_PERFECT_IVS`.
+- Organizer now treats `DONE` / `NO BREED` families with `AUTO` Box Policy as ordinary collection stock, pooling them into **FINAL EVOLUTIONS** / **STORAGE** instead of creating large dedicated family boxes. Manual `OWN BOX` still overrides this.
+- Pokédex breeding tasks now search owned Pokémon across **PC + team + Nursery** instead of staying inside the target family pool.
+- Pokédex breeding donor priority is now **same species → compatible shared Egg Group → Ditto fallback**.
+- Cross-family Egg-Group donors and Ditto selected by an active Pokédex task are protected from Clean Up while the task is needed.
+- Improved Pokédex Task text so cross-species Egg Group and Ditto pairings are shown explicitly instead of misleading “missing parent in this Dex-parent pool” messages.
+- Updated player-facing cleanup explanations, Safety / Transparency documentation and exact v1.18.2 verification hash.
+
 ## v1.17.1
 
 - Added **Breed Planner**, which starts from the Pokémon / Nature / Ability / IV target you want and searches the Pokémon you actually own for useful breeding routes.
