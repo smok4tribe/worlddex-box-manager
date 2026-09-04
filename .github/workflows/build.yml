@@ -1,29 +1,37 @@
-name: Verify Box Manager
+name: Apply Box Manager v1.18.2
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "box-manager.js"
       - ".github/workflows/build.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify:
+  apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Box Manager v1.17.1
+      - name: Apply v1.18.2 source patch
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="239060910a15e73963ca0e78408d5d4e29344c54f6b06ef313e9d2c08515a313"
+          cat .tmp-update-v1182/part1.patch .tmp-update-v1182/part2.patch > /tmp/v1182.patch
+          git apply --check /tmp/v1182.patch
+          git apply /tmp/v1182.patch
 
           node --check box-manager.js
 
+          EXPECTED="e84a1bd7153f23c1074e7a0360a3df7dba39e22937cc44470e5722b4932b24c8"
           ACTUAL="$(sha256sum box-manager.js | awk '{print $1}')"
           echo "SHA256: $ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add box-manager.js
+          git commit -m "Update Box Manager to v1.18.2"
+          git push
