@@ -1,0 +1,148 @@
+name: Apply Box Manager v1.18.3
+
+on:
+  push:
+    paths:
+      - ".github/workflows/apply-v1.18.3.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply v1.18.3 high-box-first organizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+
+          p = Path('box-manager.js')
+          s = p.read_text(encoding='utf-8')
+
+          old_hash = 'e84a1bd7153f23c1074e7a0360a3df7dba39e22937cc44470e5722b4932b24c8'
+          new_hash = '5a42af9ddc512438b6d584ba382d21a6591addc9af7ad96dd297bd3d50502288'
+
+          # Version bump.
+          s = s.replace('v1.18.2', 'v1.18.3')
+          s = s.replace('1.18.2', '1.18.3')
+
+          needle = """      function stableAssignOrganizerBoxes(\n"""
+          insert = """      function maxScoreDescendingAssignment(scores) {\n        // Same ordered-assignment problem as maxScoreIncreasingAssignment(),\n        // but physical PC boxes are traversed from the highest box downward.\n        // Logical group 0 therefore prefers Box 32, group 1 Box 31, etc.\n        // This intentionally leaves the earliest boxes free for newly caught /\n        // newly received Pokemon, which Worlddex places into the first available\n        // PC space.\n        if (!scores.length) return [];\n        const boxCount = scores[0].length;\n        const reversedScores = scores.map(row => row.slice().reverse());\n        const reversedTargets = maxScoreIncreasingAssignment(reversedScores);\n        return reversedTargets.map(index => boxCount - 1 - index);\n      }\n\n"""
+          if insert.strip() not in s:
+              if needle not in s:
+                  raise SystemExit('stableAssignOrganizerBoxes anchor not found')
+              s = s.replace(needle, insert + needle, 1)
+
+          old = """        // Choose how much we care about preserving current physical positions\n        // versus keeping the logical Organizer sections visually ordered.\n        //\n        // min_moves: current v1.11/v1.12 behavior — aggressively preserve boxes.\n        // balanced:  preserve established groups, but fix obvious stragglers.\n        // ordered:   strongly follow logical order, accepting more moves.\n"""
+          new = """        // Choose how much we care about preserving current physical positions\n        // versus keeping the logical Organizer sections visually ordered.\n        //\n        // Physical packing now runs from the END of the 32-box PC downward.\n        // Worlddex puts new captures / received Pokemon into the first available\n        // PC space, so keeping the early boxes free prevents routine gameplay from\n        // constantly dirtying the organized part of the PC.\n        //\n        // min_moves: aggressively preserve current boxes and may ignore high-box\n        //            packing when that avoids moves.\n        // balanced:  keep section order and strongly prefer Box 32 -> Box 1.\n        // ordered:   pack Box 32 -> Box 1 as tightly as possible.\n"""
+          if old not in s:
+              raise SystemExit('organizer strategy comment anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """        const weights = mode === 'min_moves'\n          ? { stay:1_000_000, name:5_000, exact:100, nearPerBox:1 }\n          : mode === 'ordered'\n            ? { stay:200, name:50, exact:2_000_000, nearPerBox:100_000 }\n            : { stay:4_000, name:1_000, exact:20_000, nearPerBox:1_000 };\n"""
+          new = """        const weights = mode === 'min_moves'\n          ? { stay:1_000_000, name:5_000, exact:100, nearPerBox:1 }\n          : mode === 'ordered'\n            ? { stay:200, name:50, exact:20_000_000, nearPerBox:500_000 }\n            : { stay:4_000, name:1_000, exact:2_000_000, nearPerBox:40_000 };\n"""
+          if old not in s:
+              raise SystemExit('organizer weights anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """            // This only resolves ties. It can never beat one extra Pokémon stay.\n            const distance = Math.abs(physicalBox - defIndex);\n            const canonical =\n              physicalBox === defIndex\n                ? SCORE_CANONICAL_EXACT\n                : Math.max(0, boxCount - distance) * SCORE_CANONICAL_NEAR;\n"""
+          new = """            // Canonical physical placement is descending: logical group 0 ->\n            // the highest PC box, then work backwards. In Balanced / Ordered this\n            // is intentionally strong enough to keep the organized block at the\n            // high end instead of sacrificing the buffer just to save a few moves.\n            const canonicalBox = boxCount - 1 - defIndex;\n            const distance = Math.abs(physicalBox - canonicalBox);\n            const canonical =\n              physicalBox === canonicalBox\n                ? SCORE_CANONICAL_EXACT\n                : Math.max(0, boxCount - distance) * SCORE_CANONICAL_NEAR;\n"""
+          if old not in s:
+              raise SystemExit('canonical placement anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """        } else {\n          // Balanced and Ordered both respect the user's Category order.\n          // Balanced may leave gaps to preserve existing boxes; Ordered's score\n          // heavily prefers the earliest canonical positions.\n          targets=maxScoreIncreasingAssignment(scores);\n        }\n"""
+          new = """        } else {\n          // Balanced and Ordered both respect the user's Category order while\n          // traversing physical boxes in reverse. This keeps the organized block\n          // at the end of the PC (Box 32, 31, 30...) and leaves early boxes as the\n          // natural landing zone for new captures.\n          targets=maxScoreDescendingAssignment(scores);\n        }\n"""
+          if old not in s:
+              raise SystemExit('ordered assignment anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """          layoutPriority:prefs.layoutPriority,\n          categoryOrder:[...sectionOrder],\n"""
+          new = """          layoutPriority:prefs.layoutPriority,\n          physicalDirection:prefs.layoutPriority === 'min_moves' ? 'move-optimized' : 'descending-high-boxes-first',\n          categoryOrder:[...sectionOrder],\n"""
+          if old not in s:
+              raise SystemExit('plan metadata anchor not found')
+          s = s.replace(old, new, 1)
+
+          s = s.replace(
+              '<option value="balanced">Balanced (recommended)</option>',
+              '<option value="balanced">Balanced (recommended · Box 32 → 1)</option>'
+          )
+          s = s.replace(
+              '<option value="ordered">Keep boxes ordered</option>',
+              '<option value="ordered">Keep boxes ordered (32 → 1)</option>'
+          )
+          old = '<b>Layout priority:</b> all three modes use the section order you choose. Balanced keeps that order while allowing gaps to save moves. Keep boxes ordered follows it as tightly as possible from the earliest boxes. Minimize moves treats it as a preference and may bend it only when doing so avoids extra moves.<br>'
+          new = '<b>Layout priority:</b> Balanced and Keep boxes ordered fill the PC from Box 32 downward, leaving the earliest boxes free for new captures. Balanced may leave a small gap when it meaningfully saves moves; Keep boxes ordered follows the selected section order as tightly as possible. Minimize moves prioritizes keeping Pokémon where they already are and may ignore the high-box-first layout.<br>'
+          if old not in s:
+              raise SystemExit('layout help text anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """            `${organizerPlan.alreadyPlaced} already in place · ${layoutLabel}.`,\n"""
+          new = """            `${organizerPlan.alreadyPlaced} already in place · ${layoutLabel}` +\n            `${organizerPlan.layoutPriority === 'min_moves' ? '' : ' · Box 32 → 1'}.`,\n"""
+          if old not in s:
+              raise SystemExit('preview log anchor not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+          # README: version, behaviour and exact verification hash.
+          r = Path('README.md')
+          readme = r.read_text(encoding='utf-8')
+          readme = readme.replace('> **Current version: v1.18.2**', '> **Current version: v1.18.3**', 1)
+          anchor = '- customize the order of the sections that actually exist in your current setup.\n'
+          addition = anchor + '- keep the organized block at the **high end of the 32-box PC** so the early boxes remain a landing zone for new captures / received Pokémon.\n'
+          if anchor not in readme:
+              raise SystemExit('README organizer bullet anchor not found')
+          readme = readme.replace(anchor, addition, 1)
+
+          old_layout = '''All modes use the section order you choose in **Customize box order**.\n\n- **Balanced** keeps that order while allowing gaps when they save unnecessary moves.\n- **Keep boxes ordered** follows the chosen order as tightly as possible from the earliest boxes.\n- **Minimize moves** treats your chosen order as a preference and may bend it when that avoids extra moves.\n'''
+          new_layout = '''The PC currently has **32 boxes**. In the normal Balanced / Ordered layouts, the Organizer works **backwards from Box 32** so routine catches do not immediately spill into the organized block.\n\n- **Balanced** keeps your section order and strongly prefers `Box 32 → Box 31 → Box 30...`, while still allowing a small gap when it meaningfully reduces unnecessary moves.\n- **Keep boxes ordered** follows the chosen order as tightly as possible from the high end of the PC.\n- **Minimize moves** prioritizes leaving Pokémon where they already are and may ignore the high-box-first layout when that avoids extra moves.\n\nWorlddex normally places newly caught / received Pokémon into the first available PC space. Keeping the low-numbered boxes as the natural intake buffer means you can play, catch and hatch without constantly dirtying the front of an already organized PC.\n'''
+          if old_layout not in readme:
+              raise SystemExit('README layout section anchor not found')
+          readme = readme.replace(old_layout, new_layout, 1)
+          readme = readme.replace('current v1.18.2 source', 'current v1.18.3 source', 1)
+          readme = readme.replace('What is not present in v1.18.2:', 'What is not present in v1.18.3:', 1)
+          readme = readme.replace('Current v1.18.2 SHA-256:', 'Current v1.18.3 SHA-256:', 1)
+          readme = readme.replace(old_hash, new_hash, 1)
+          r.write_text(readme, encoding='utf-8')
+
+          # Changelog.
+          c = Path('CHANGELOG.md')
+          changelog = c.read_text(encoding='utf-8')
+          marker = '# Changelog\n\n'
+          entry = '''## v1.18.3\n\n- Organizer **Balanced** and **Keep boxes ordered** now place the organized PC from **Box 32 downward** instead of starting at Box 1.\n- This intentionally leaves low-numbered boxes as an intake buffer because Worlddex places new catches / received Pokémon into the first available PC space.\n- The selected section order is preserved while physical placement runs in reverse (`32 → 31 → 30...`).\n- Balanced still retains limited move-saving flexibility, while Keep boxes ordered strongly packs the high end; **Minimize moves** remains available when preserving current physical positions matters more than the intake buffer.\n- Updated Organizer help / preview text and added physical-direction metadata to exported plans.\n- Updated documentation and exact v1.18.3 verification hash.\n\n'''
+          if not changelog.startswith(marker):
+              raise SystemExit('CHANGELOG header not found')
+          changelog = marker + entry + changelog[len(marker):]
+          c.write_text(changelog, encoding='utf-8')
+
+          # Final verification workflow.
+          w = Path('.github/workflows/build.yml')
+          workflow = w.read_text(encoding='utf-8')
+          workflow = workflow.replace('Verify Box Manager v1.18.2', 'Verify Box Manager v1.18.3', 1)
+          workflow = workflow.replace(old_hash, new_hash, 1)
+          w.write_text(workflow, encoding='utf-8')
+          PY
+
+          node --check box-manager.js
+          ACTUAL="$(sha256sum box-manager.js | awk '{print $1}')"
+          echo "SHA256: $ACTUAL"
+          test "$ACTUAL" = "5a42af9ddc512438b6d584ba382d21a6591addc9af7ad96dd297bd3d50502288"
+
+      - name: Commit v1.18.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-v1.18.3.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Box Manager v1.18.3: organize from Box 32 downward"
+          git push origin HEAD:main
