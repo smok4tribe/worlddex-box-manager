@@ -1,0 +1,51 @@
+name: Build Box Manager v1.18.5 polish test
+
+on:
+  push:
+    branches:
+      - box-manager-v1-18-4-shell
+    paths:
+      - .github/workflows/one-shot-v1-18-5-polish.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: box-manager-v1-18-4-shell
+
+      - name: Apply v1.18.5 polish
+        run: python3 .github/scripts/refine_v1_18_5_polish.py
+
+      - name: Validate JavaScript and expected features
+        run: |
+          node --check box-manager.js
+          grep -Fq "BOX MANAGER v1.18.5" box-manager.js
+          grep -Fq "worlddex.boxManager.v1.18.launcherPosition" box-manager.js
+          grep -Fq "wd-organizer-box-direction" box-manager.js
+          grep -Fq "BREED_PLANNER_FORM_KEY" box-manager.js
+          grep -Fq "Recalculate best pair" box-manager.js
+          grep -Fq "height:76px" box-manager.js
+
+      - name: Package test source
+        run: cp box-manager.js /tmp/worlddex_box_manager_v1_18_5_test.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worlddex-box-manager-v1-18-5-test
+          path: /tmp/worlddex_box_manager_v1_18_5_test.txt
+          if-no-files-found: error
+
+      - name: Commit clean test branch
+        run: |
+          rm .github/workflows/one-shot-v1-18-5-polish.yml
+          rm .github/scripts/refine_v1_18_5_polish.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: Box Manager v1.18.5 polish"
+          git push origin HEAD:box-manager-v1-18-4-shell
