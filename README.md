@@ -4,7 +4,7 @@ Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
 It adds a floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
 
-> **Current version: v1.18.2**
+> **Current version: v1.18.3**
 
 ## What it can do
 
@@ -27,6 +27,7 @@ You can also:
 - choose the level threshold used for Battle Ready Pokémon;
 - choose how strongly the manager should preserve your current layout;
 - customize the order of the sections that actually exist in your current setup.
+- keep the organized block at the **high end of the 32-box PC** so the early boxes remain a landing zone for new captures / received Pokémon.
 
 The Organizer never releases Pokémon. It only moves them between boxes and optionally renames boxes.
 
@@ -143,11 +144,13 @@ You can change any option after selecting a preset.
 
 ## Layout priority
 
-All modes use the section order you choose in **Customize box order**.
+The PC currently has **32 boxes**. In the normal Balanced / Ordered layouts, the Organizer works **backwards from Box 32** so routine catches do not immediately spill into the organized block.
 
-- **Balanced** keeps that order while allowing gaps when they save unnecessary moves.
-- **Keep boxes ordered** follows the chosen order as tightly as possible from the earliest boxes.
-- **Minimize moves** treats your chosen order as a preference and may bend it when that avoids extra moves.
+- **Balanced** keeps your section order and strongly prefers `Box 32 → Box 31 → Box 30...`, while still allowing a small gap when it meaningfully reduces unnecessary moves.
+- **Keep boxes ordered** follows the chosen order as tightly as possible from the high end of the PC.
+- **Minimize moves** prioritizes leaving Pokémon where they already are and may ignore the high-box-first layout when that avoids extra moves.
+
+Worlddex normally places newly caught / received Pokémon into the first available PC space. Keeping the low-numbered boxes as the natural intake buffer means you can play, catch and hatch without constantly dirtying the front of an already organized PC.
 
 The order editor only shows sections that are actually present in the current preview. If your setup only creates four groups, you only need to order those four groups.
 
@@ -198,7 +201,7 @@ Even with these safeguards, this is an unofficial community tool. Review the cle
 
 ## Transparency
 
-The current v1.18.2 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
+The current v1.18.3 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
 
 What the script does:
 
@@ -207,7 +210,7 @@ What the script does:
 - writes only to Worlddex endpoints used for the features you explicitly run: `/api/box/release`, `/api/box/move` and `/api/pc/box-name`;
 - stores Box Manager preferences and project state locally in `localStorage`, including breeding / special retention choices, Breed Planner projects, Organizer settings, the active view and panel position.
 
-What is not present in v1.18.2:
+What is not present in v1.18.3:
 
 - no third-party URLs or external API calls;
 - no analytics, tracking, ads, webhooks or telemetry;
@@ -229,6 +232,6 @@ Worlddex updates can require changes to this tool.
 
 The repository verifies `box-manager.js` with a JavaScript syntax check and an exact SHA-256 check.
 
-Current v1.18.2 SHA-256:
+Current v1.18.3 SHA-256:
 
-`e84a1bd7153f23c1074e7a0360a3df7dba39e22937cc44470e5722b4932b24c8`
+`5a42af9ddc512438b6d584ba382d21a6591addc9af7ad96dd297bd3d50502288`

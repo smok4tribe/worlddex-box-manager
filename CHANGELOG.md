@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.18.3
+
+- Organizer **Balanced** and **Keep boxes ordered** now place the organized PC from **Box 32 downward** instead of starting at Box 1.
+- This intentionally leaves low-numbered boxes as an intake buffer because Worlddex places new catches / received Pokémon into the first available PC space.
+- The selected section order is preserved while physical placement runs in reverse (`32 → 31 → 30...`).
+- Balanced still retains limited move-saving flexibility, while Keep boxes ordered strongly packs the high end; **Minimize moves** remains available when preserving current physical positions matters more than the intake buffer.
+- Updated Organizer help / preview text and added physical-direction metadata to exported plans.
+- Updated documentation and exact v1.18.3 verification hash.
+
 ## v1.18.2
 
 - Reworked **DONE** family cleanup so finished breeding lines no longer keep every ordinary 70%+ IV duplicate forever.

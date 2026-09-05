@@ -213,7 +213,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.18.2 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.3 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -619,7 +619,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.18.2
+      // FAMILY / BREEDING DECISIONS v1.18.3
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1595,7 +1595,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.18.2 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.3 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1800,7 +1800,7 @@ No Pokémon will be moved or released.`)) return;
 
 
       // ─────────────────────────────────────────────────────────────
-      // BREED PLANNER v1.18.2
+      // BREED PLANNER v1.18.3
       // Goal-first planner: choose the Pokémon you want, then rank legal pairs
       // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
       // preference because Worlddex warns that different species produce Eggs
@@ -2885,7 +2885,7 @@ No Pokémon will be moved or released.`)) return;
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.18.2</b>
+              <b>Worlddex Box Manager v1.18.3</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
@@ -3583,7 +3583,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.18.2) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.3) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -3830,7 +3830,7 @@ No Pokémon will be moved or released.`)) return;
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.18.2
+      // BOX ORGANIZER v1.18.3
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -4242,6 +4242,20 @@ No Pokémon will be moved or released.`)) return;
         return assignment;
       }
 
+      function maxScoreDescendingAssignment(scores) {
+        // Same ordered-assignment problem as maxScoreIncreasingAssignment(),
+        // but physical PC boxes are traversed from the highest box downward.
+        // Logical group 0 therefore prefers Box 32, group 1 Box 31, etc.
+        // This intentionally leaves the earliest boxes free for newly caught /
+        // newly received Pokemon, which Worlddex places into the first available
+        // PC space.
+        if (!scores.length) return [];
+        const boxCount = scores[0].length;
+        const reversedScores = scores.map(row => row.slice().reverse());
+        const reversedTargets = maxScoreIncreasingAssignment(reversedScores);
+        return reversedTargets.map(index => boxCount - 1 - index);
+      }
+
       function stableAssignOrganizerBoxes(
         boxDefs,
         boxCount,
@@ -4266,9 +4280,15 @@ No Pokémon will be moved or released.`)) return;
         // Choose how much we care about preserving current physical positions
         // versus keeping the logical Organizer sections visually ordered.
         //
-        // min_moves: current v1.11/v1.12 behavior — aggressively preserve boxes.
-        // balanced:  preserve established groups, but fix obvious stragglers.
-        // ordered:   strongly follow logical order, accepting more moves.
+        // Physical packing now runs from the END of the 32-box PC downward.
+        // Worlddex puts new captures / received Pokemon into the first available
+        // PC space, so keeping the early boxes free prevents routine gameplay from
+        // constantly dirtying the organized part of the PC.
+        //
+        // min_moves: aggressively preserve current boxes and may ignore high-box
+        //            packing when that avoids moves.
+        // balanced:  keep section order and strongly prefer Box 32 -> Box 1.
+        // ordered:   pack Box 32 -> Box 1 as tightly as possible.
         const mode = ['balanced','min_moves','ordered'].includes(layoutPriority)
           ? layoutPriority
           : 'balanced';
@@ -4276,8 +4296,8 @@ No Pokémon will be moved or released.`)) return;
         const weights = mode === 'min_moves'
           ? { stay:1_000_000, name:5_000, exact:100, nearPerBox:1 }
           : mode === 'ordered'
-            ? { stay:200, name:50, exact:2_000_000, nearPerBox:100_000 }
-            : { stay:4_000, name:1_000, exact:20_000, nearPerBox:1_000 };
+            ? { stay:200, name:50, exact:20_000_000, nearPerBox:500_000 }
+            : { stay:4_000, name:1_000, exact:2_000_000, nearPerBox:40_000 };
 
         const SCORE_PER_STAY = weights.stay;
         const SCORE_NAME_MATCH = weights.name;
@@ -4315,10 +4335,14 @@ No Pokémon will be moved or released.`)) return;
                 ? SCORE_NAME_MATCH
                 : 0;
 
-            // This only resolves ties. It can never beat one extra Pokémon stay.
-            const distance = Math.abs(physicalBox - defIndex);
+            // Canonical physical placement is descending: logical group 0 ->
+            // the highest PC box, then work backwards. In Balanced / Ordered this
+            // is intentionally strong enough to keep the organized block at the
+            // high end instead of sacrificing the buffer just to save a few moves.
+            const canonicalBox = boxCount - 1 - defIndex;
+            const distance = Math.abs(physicalBox - canonicalBox);
             const canonical =
-              physicalBox === defIndex
+              physicalBox === canonicalBox
                 ? SCORE_CANONICAL_EXACT
                 : Math.max(0, boxCount - distance) * SCORE_CANONICAL_NEAR;
 
@@ -4339,10 +4363,11 @@ No Pokémon will be moved or released.`)) return;
           const cost=scores.map(row=>row.map(score=>maxScore-score));
           targets=hungarianMin(cost);
         } else {
-          // Balanced and Ordered both respect the user's Category order.
-          // Balanced may leave gaps to preserve existing boxes; Ordered's score
-          // heavily prefers the earliest canonical positions.
-          targets=maxScoreIncreasingAssignment(scores);
+          // Balanced and Ordered both respect the user's Category order while
+          // traversing physical boxes in reverse. This keeps the organized block
+          // at the end of the PC (Box 32, 31, 30...) and leaves early boxes as the
+          // natural landing zone for new captures.
+          targets=maxScoreDescendingAssignment(scores);
         }
 
         let stayed = 0;
@@ -4804,6 +4829,7 @@ No Pokémon will be moved or released.`)) return;
           renameEnabled:!!prefs.renameBoxes,
           renameChanges,
           layoutPriority:prefs.layoutPriority,
+          physicalDirection:prefs.layoutPriority === 'min_moves' ? 'move-optimized' : 'descending-high-boxes-first',
           categoryOrder:[...sectionOrder],
           activeSections:[...activeSections],
           breedingOrganizationEnabled:!!prefs.keepBreedersTogether,
@@ -4944,7 +4970,8 @@ No Pokémon will be moved or released.`)) return;
               : 'Balanced';
           logOrganizer(
             `Preview updated: ${organizerPlan.moves.length} move(s), ` +
-            `${organizerPlan.alreadyPlaced} already in place · ${layoutLabel}.`,
+            `${organizerPlan.alreadyPlaced} already in place · ${layoutLabel}` +
+            `${organizerPlan.layoutPriority === 'min_moves' ? '' : ' · Box 32 → 1'}.`,
             'ok'
           );
           updateOrganizerApplyButton(organizerPlan, false);
@@ -5854,9 +5881,9 @@ No Pokémon will be moved or released.`)) return;
                 </select>
                 <b style="margin-left:10px">Layout priority</b>
                 <select id="wd-organizer-layout-priority">
-                  <option value="balanced">Balanced (recommended)</option>
+                  <option value="balanced">Balanced (recommended · Box 32 → 1)</option>
                   <option value="min_moves">Minimize moves</option>
-                  <option value="ordered">Keep boxes ordered</option>
+                  <option value="ordered">Keep boxes ordered (32 → 1)</option>
                 </select>
               </div>
               <div class="wdorg-checks">
@@ -5887,7 +5914,7 @@ No Pokémon will be moved or released.`)) return;
                 <summary>What do these options mean?</summary>
                 <div>
                   <b>Organization style:</b> Minimal keeps fewer separate groups; Recommended is the normal default; Functional separates every useful group.<br>
-                  <b>Layout priority:</b> all three modes use the section order you choose. Balanced keeps that order while allowing gaps to save moves. Keep boxes ordered follows it as tightly as possible from the earliest boxes. Minimize moves treats it as a preference and may bend it only when doing so avoids extra moves.<br>
+                  <b>Layout priority:</b> Balanced and Keep boxes ordered fill the PC from Box 32 downward, leaving the earliest boxes free for new captures. Balanced may leave a small gap when it meaningfully saves moves; Keep boxes ordered follows the selected section order as tightly as possible. Minimize moves prioritizes keeping Pokémon where they already are and may ignore the high-box-first layout.<br>
                   <b>Customize box order:</b> the editor only shows sections that actually exist in the current preview, so a Minimal setup stays minimal instead of showing unused categories.<br>
                   <b>Breeding Projects:</b> when disabled, breeding families are treated like normal collection Pokémon for organization. Cleaner protection is unchanged.<br>
                   <b>Battle Ready:</b> a Pokémon qualifies through the selected EV or level rules.<br>
@@ -6072,7 +6099,7 @@ No Pokémon will be moved or released.`)) return;
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.18.2] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.18.3] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -6645,7 +6672,7 @@ No Pokémon will be moved or released.`)) return;
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.18.2] reload failed', err);
+      console.error('[Worlddex Box Manager v1.18.3] reload failed', err);
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
     } finally {
