@@ -5,7 +5,7 @@
 - Added an on-demand **Box Manager** launcher: loading the script no longer opens the full manager or reads Box/State data until the player clicks it.
 - `×` now hides the manager back to the launcher instead of making the UI disappear permanently.
 - `_` is now a true compact minimize; the minimized shell keeps only the title and restore/close controls visible.
-- Restoring preserves the full panel dimensions from before minimize.
+- Restoring preserves the full panel dimensions from before minimize and clamps the restored panel back inside the viewport.
 - Added `window.__WORLDDEX_BOX_MANAGER_OPEN()` / `CLOSE()` hooks for future Tampermonkey, extension and embedded integrations.
 - Embedded hosts can set `window.__WORLDDEX_BOX_MANAGER_EMBEDDED = true` to use their own launcher while keeping the same shell behavior.
 - Cleaner and Organizer safety behavior is unchanged.

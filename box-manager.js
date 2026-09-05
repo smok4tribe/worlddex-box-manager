@@ -3038,6 +3038,20 @@ No Pokémon will be moved or released.`)) return;
           const h = Number(shell.dataset.fullHeight);
           if (Number.isFinite(w) && w > 0) shell.style.width = `${Math.min(window.innerWidth - 12, w)}px`;
           if (Number.isFinite(h) && h > 0) shell.style.height = `${Math.min(window.innerHeight - 12, h)}px`;
+
+          // A minimized 340px bar can be dragged much farther right than the
+          // full panel. Clamp the restored shell back into the viewport so it
+          // can never reopen partly off-screen.
+          requestAnimationFrame(() => {
+            const r = shell.getBoundingClientRect();
+            const maxLeft = Math.max(6, window.innerWidth - shell.offsetWidth - 6);
+            const maxTop = Math.max(6, window.innerHeight - 44);
+            if (r.left > maxLeft) shell.style.left = `${maxLeft}px`;
+            if (r.left < 6) shell.style.left = '6px';
+            if (r.top > maxTop) shell.style.top = `${maxTop}px`;
+            if (r.top < 6) shell.style.top = '6px';
+          });
+
           if (btn) {
             btn.textContent = '_';
             btn.title = 'Minimize to a compact title bar';
