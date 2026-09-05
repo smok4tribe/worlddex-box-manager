@@ -2,9 +2,9 @@
 
 Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
-It adds a floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
+It adds an on-demand floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
 
-> **Current version: v1.18.3**
+> **Current version: v1.18.4**
 
 ## What it can do
 
@@ -162,8 +162,10 @@ The manager uses one floating window. The main actions come first, followed by p
 
 The window can be:
 
+- opened on demand from a small **Box Manager** launcher;
 - dragged around the page;
-- minimized;
+- truly minimized to a compact title bar;
+- hidden with `×`, which returns it to the small launcher;
 - enlarged by dragging the bottom-right corner;
 - reloaded without losing the current section;
 - configured with preferences that are remembered locally.
@@ -178,6 +180,7 @@ The current community version is still a standalone browser script.
 2. Open your browser's Developer Tools and select **Console**.
 3. Open [`box-manager.js`](./box-manager.js) on GitHub and copy the full file.
 4. Paste it into the Worlddex console and run it.
+5. A small **Box Manager** button appears; click it when you want to load the manager.
 5. The Box Manager window will appear.
 
 If your PC changes while the manager is open, use **Reload** before doing a large cleanup, organization run or breeding-path recalculation.

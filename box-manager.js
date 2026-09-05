@@ -3,6 +3,57 @@
 
   let __wdManagerRefreshing = false;
 
+  const __WD_MANAGER_LAUNCHER_ID = 'wd-manager-launcher';
+  const __WD_MANAGER_LAUNCHER_STYLE_ID = 'wd-manager-launcher-style';
+
+  function __wdManagerEnsureLauncher() {
+    let launcher = document.getElementById(__WD_MANAGER_LAUNCHER_ID);
+    if (launcher) return launcher;
+
+    document.getElementById(__WD_MANAGER_LAUNCHER_STYLE_ID)?.remove();
+    const style = document.createElement('style');
+    style.id = __WD_MANAGER_LAUNCHER_STYLE_ID;
+    style.textContent = `
+      #${__WD_MANAGER_LAUNCHER_ID} {
+        position:fixed;
+        z-index:2147483647;
+        top:88px;
+        right:18px;
+        padding:9px 12px;
+        border:1px solid #3b485d;
+        border-radius:9px;
+        background:#12151b;
+        color:#e8edf5;
+        box-shadow:0 8px 24px rgba(0,0,0,.38);
+        font:13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;
+        font-weight:650;
+        cursor:pointer;
+      }
+      #${__WD_MANAGER_LAUNCHER_ID}:hover { background:#202938; }
+    `;
+    document.head.appendChild(style);
+
+    launcher = document.createElement('button');
+    launcher.id = __WD_MANAGER_LAUNCHER_ID;
+    launcher.type = 'button';
+    launcher.textContent = 'Box Manager';
+    launcher.title = 'Open Worlddex Box Manager';
+    launcher.addEventListener('click', () => window.__WORLDDEX_BOX_MANAGER_OPEN?.());
+    document.body.appendChild(launcher);
+    return launcher;
+  }
+
+  function __wdManagerShowLauncher() {
+    const launcher = __wdManagerEnsureLauncher();
+    launcher.hidden = false;
+    return launcher;
+  }
+
+  function __wdManagerHideLauncher() {
+    const launcher = document.getElementById(__WD_MANAGER_LAUNCHER_ID);
+    if (launcher) launcher.hidden = true;
+  }
+
   function __wdManagerCleanupUI() {
     [
       'wd-manager-shell-v110',
@@ -213,7 +264,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.18.3 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.4 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -619,7 +670,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.18.3
+      // FAMILY / BREEDING DECISIONS v1.18.4
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1595,7 +1646,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.18.3 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.4 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1800,7 +1851,7 @@ No Pokémon will be moved or released.`)) return;
 
 
       // ─────────────────────────────────────────────────────────────
-      // BREED PLANNER v1.18.3
+      // BREED PLANNER v1.18.4
       // Goal-first planner: choose the Pokémon you want, then rank legal pairs
       // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
       // preference because Worlddex warns that different species produce Eggs
@@ -2676,6 +2727,7 @@ No Pokémon will be moved or released.`)) return;
         managerClearViewPanels();
         document.getElementById('wd-manager-shell-v110')?.remove();
         document.getElementById('wd-manager-shell-v110-style')?.remove();
+        __wdManagerShowLauncher();
       }
 
       function ensureManagerShell() {
@@ -2728,13 +2780,23 @@ No Pokémon will be moved or released.`)) return;
           }
           #wd-manager-shell-v110.wdm-minimized::after { display:none; }
           #wd-manager-shell-v110.wdm-minimized {
+            width:340px !important;
+            min-width:340px !important;
+            max-width:calc(100vw - 12px) !important;
             height:auto !important;
             max-height:none !important;
             min-height:0 !important;
             resize:none !important;
           }
-          #wd-manager-shell-v110.wdm-minimized #wd-manager-view-slot {
+          #wd-manager-shell-v110.wdm-minimized #wd-manager-view-slot,
+          #wd-manager-shell-v110.wdm-minimized .wdm-nav,
+          #wd-manager-shell-v110.wdm-minimized #wd-manager-refresh,
+          #wd-manager-shell-v110.wdm-minimized #wd-manager-current-view {
             display:none !important;
+          }
+          #wd-manager-shell-v110.wdm-minimized .wdm-brand {
+            flex:1 1 auto;
+            min-width:0;
           }
           #wd-manager-shell-v110 .wdm-head {
             flex:0 0 auto;
@@ -2885,7 +2947,7 @@ No Pokémon will be moved or released.`)) return;
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.18.3</b>
+              <b>Worlddex Box Manager v1.18.4</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
@@ -2903,8 +2965,8 @@ No Pokémon will be moved or released.`)) return;
             </div>
             <div class="wdm-spacer"></div>
             <button id="wd-manager-refresh" title="Check your current PC again and refresh this section">Reload</button>
-            <button id="wd-manager-minimize">Minimize</button>
-            <button id="wd-manager-close">×</button>
+            <button id="wd-manager-minimize" title="Minimize to a compact title bar">_</button>
+            <button id="wd-manager-close" title="Hide Box Manager">×</button>
           </div>
           <div id="wd-manager-view-slot"></div>
         `;
@@ -2947,10 +3009,39 @@ No Pokémon will be moved or released.`)) return;
           window.__WORLDDEX_BOX_MANAGER_REFRESH?.();
         });
 
-        shell.querySelector('#wd-manager-minimize').addEventListener('click', e => {
-          const minimized = shell.classList.toggle('wdm-minimized');
-          e.currentTarget.textContent = minimized ? 'Restore' : 'Minimize';
-          e.currentTarget.setAttribute('aria-expanded', String(!minimized));
+        const setManagerMinimized = minimized => {
+          const btn = shell.querySelector('#wd-manager-minimize');
+
+          if (minimized) {
+            if (!shell.classList.contains('wdm-minimized')) {
+              const r = shell.getBoundingClientRect();
+              shell.dataset.fullWidth = String(Math.round(r.width));
+              shell.dataset.fullHeight = String(Math.round(r.height));
+            }
+            shell.classList.add('wdm-minimized');
+            if (btn) {
+              btn.textContent = '+';
+              btn.title = 'Restore Box Manager';
+              btn.setAttribute('aria-expanded', 'false');
+            }
+            return;
+          }
+
+          shell.classList.remove('wdm-minimized');
+          const w = Number(shell.dataset.fullWidth);
+          const h = Number(shell.dataset.fullHeight);
+          if (Number.isFinite(w) && w > 0) shell.style.width = `${Math.min(window.innerWidth - 12, w)}px`;
+          if (Number.isFinite(h) && h > 0) shell.style.height = `${Math.min(window.innerHeight - 12, h)}px`;
+          if (btn) {
+            btn.textContent = '_';
+            btn.title = 'Minimize to a compact title bar';
+            btn.setAttribute('aria-expanded', 'true');
+          }
+        };
+        shell.__wdSetMinimized = setManagerMinimized;
+
+        shell.querySelector('#wd-manager-minimize').addEventListener('click', () => {
+          setManagerMinimized(!shell.classList.contains('wdm-minimized'));
         });
 
         shell.querySelector('#wd-manager-close').addEventListener('click', managerDestroyShell);
@@ -2962,12 +3053,10 @@ No Pokémon will be moved or released.`)) return;
       function managerPrepareView(view) {
         const shell = ensureManagerShell();
 
-        // Switching a top-level tab should restore the content if the panel was
-        // minimized. The shell itself and its position never change.
+        // Switching a top-level tab restores the full shell first.
         if (shell.classList.contains('wdm-minimized')) {
-          shell.classList.remove('wdm-minimized');
-          const min = shell.querySelector('#wd-manager-minimize');
-          if (min) min.textContent = 'Minimize';
+          if (typeof shell.__wdSetMinimized === 'function') shell.__wdSetMinimized(false);
+          else shell.classList.remove('wdm-minimized');
         }
 
         managerClearViewPanels();
@@ -3583,7 +3672,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.18.3) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.4) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -3830,7 +3919,7 @@ No Pokémon will be moved or released.`)) return;
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.18.3
+      // BOX ORGANIZER v1.18.4
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -6099,7 +6188,7 @@ No Pokémon will be moved or released.`)) return;
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.18.3] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.18.4] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -6643,6 +6732,7 @@ No Pokémon will be moved or released.`)) return;
 
       const startupView = managerActiveView();
       (MANAGER_VIEW_META[startupView]?.mount || mountReviewPanel)();
+      __wdManagerHideLauncher();
 
       console.log('%cANALYSIS COMPLETED — NOTHING RELEASED AUTOMATICALLY.', 'font-weight:bold;color:#50fa7b');
       console.log('Panel opened with candidates selected by default.');
@@ -6666,13 +6756,15 @@ No Pokémon will be moved or released.`)) return;
     __wdManagerRefreshing = true;
 
     __wdManagerCleanupUI();
+    __wdManagerHideLauncher();
     const loading = __wdManagerLoading();
 
     try {
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.18.3] reload failed', err);
+      console.error('[Worlddex Box Manager v1.18.4] reload failed', err);
+      __wdManagerShowLauncher();
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
     } finally {
@@ -6681,5 +6773,30 @@ No Pokémon will be moved or released.`)) return;
     }
   };
 
-  window.__WORLDDEX_BOX_MANAGER_REFRESH().catch(() => {});
+  window.__WORLDDEX_BOX_MANAGER_OPEN = async function () {
+    const shell = document.getElementById('wd-manager-shell-v110');
+    if (shell) {
+      __wdManagerHideLauncher();
+      if (typeof shell.__wdSetMinimized === 'function') shell.__wdSetMinimized(false);
+      return true;
+    }
+    __wdManagerHideLauncher();
+    return window.__WORLDDEX_BOX_MANAGER_REFRESH();
+  };
+
+  window.__WORLDDEX_BOX_MANAGER_CLOSE = function () {
+    const shell = document.getElementById('wd-manager-shell-v110');
+    if (shell) {
+      const close = shell.querySelector('#wd-manager-close');
+      if (close) close.click();
+      else shell.remove();
+    }
+    __wdManagerShowLauncher();
+  };
+
+  // Public builds stay dormant until the player asks for the manager. This is
+  // friendly to future Tampermonkey / extension packaging and avoids box/state
+  // API reads on every Worlddex page refresh.
+  __wdManagerCleanupUI();
+  __wdManagerShowLauncher();
 })();
