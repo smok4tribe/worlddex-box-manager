@@ -1,0 +1,36 @@
+name: Build Box Manager v1.18.4 shell
+
+on:
+  push:
+    branches:
+      - box-manager-v1-18-4-shell
+    paths:
+      - .github/workflows/one-shot-v1-18-4-shell.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: box-manager-v1-18-4-shell
+      - name: Apply patch
+        run: python3 .github/scripts/apply_v1_18_4_shell.py
+      - name: Validate JavaScript
+        run: |
+          node --check box-manager.js
+          grep -Fq "v1.18.4" box-manager.js
+          grep -Fq "__WORLDDEX_BOX_MANAGER_OPEN" box-manager.js
+          grep -Fq "wd-manager-launcher" box-manager.js
+      - name: Commit generated source
+        run: |
+          rm .github/workflows/one-shot-v1-18-4-shell.yml
+          rm .github/scripts/apply_v1_18_4_shell.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: Box Manager v1.18.4 on-demand shell"
+          git push origin HEAD:box-manager-v1-18-4-shell
