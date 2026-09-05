@@ -1,0 +1,34 @@
+name: Refine Box Manager v1.18.4 embedded mode
+
+on:
+  push:
+    branches:
+      - box-manager-v1-18-4-shell
+    paths:
+      - .github/workflows/one-shot-refine-v1-18-4-embed.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: box-manager-v1-18-4-shell
+      - name: Apply refinement
+        run: python3 .github/scripts/refine_v1_18_4_embed.py
+      - name: Validate JavaScript
+        run: |
+          node --check box-manager.js
+          grep -Fq "__WORLDDEX_BOX_MANAGER_EMBEDDED" box-manager.js
+      - name: Commit refinement
+        run: |
+          rm .github/workflows/one-shot-refine-v1-18-4-embed.yml
+          rm .github/scripts/refine_v1_18_4_embed.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: support embedded Box Manager launcher host"
+          git push origin HEAD:box-manager-v1-18-4-shell
