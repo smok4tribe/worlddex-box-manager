@@ -7,6 +7,7 @@
 - `_` is now a true compact minimize; the minimized shell keeps only the title and restore/close controls visible.
 - Restoring preserves the full panel dimensions from before minimize.
 - Added `window.__WORLDDEX_BOX_MANAGER_OPEN()` / `CLOSE()` hooks for future Tampermonkey, extension and embedded integrations.
+- Embedded hosts can set `window.__WORLDDEX_BOX_MANAGER_EMBEDDED = true` to use their own launcher while keeping the same shell behavior.
 - Cleaner and Organizer safety behavior is unchanged.
 
 ## v1.18.3

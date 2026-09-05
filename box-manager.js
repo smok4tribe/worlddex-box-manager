@@ -44,6 +44,12 @@
   }
 
   function __wdManagerShowLauncher() {
+    // Embedded hosts (currently the QA Toolbox) already provide their own
+    // Box Manager entry point, so they can suppress the standalone launcher.
+    if (window.__WORLDDEX_BOX_MANAGER_EMBEDDED === true) {
+      document.getElementById(__WD_MANAGER_LAUNCHER_ID)?.remove();
+      return null;
+    }
     const launcher = __wdManagerEnsureLauncher();
     launcher.hidden = false;
     return launcher;
