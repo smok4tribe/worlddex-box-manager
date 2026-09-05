@@ -1,0 +1,36 @@
+name: Package Box Manager v1.18.4 test TXT
+
+on:
+  push:
+    branches:
+      - box-manager-v1-18-4-shell
+    paths:
+      - .github/workflows/one-shot-package-v1-18-4-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: box-manager-v1-18-4-shell
+      - name: Validate and package
+        run: |
+          node --check box-manager.js
+          cp box-manager.js /tmp/worlddex_box_manager_v1_18_4_test.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worlddex-box-manager-v1-18-4-test
+          path: /tmp/worlddex_box_manager_v1_18_4_test.txt
+          if-no-files-found: error
+      - name: Remove temporary workflow
+        run: |
+          rm .github/workflows/one-shot-package-v1-18-4-test.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: remove v1.18.4 test packaging workflow"
+          git push origin HEAD:box-manager-v1-18-4-shell
