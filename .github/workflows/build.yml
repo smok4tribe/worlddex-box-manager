@@ -16,11 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Box Manager v1.18.2
+      - name: Verify Box Manager v1.18.3
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="e84a1bd7153f23c1074e7a0360a3df7dba39e22937cc44470e5722b4932b24c8"
+          EXPECTED="5a42af9ddc512438b6d584ba382d21a6591addc9af7ad96dd297bd3d50502288"
 
           node --check box-manager.js
 
