@@ -5,6 +5,7 @@
 
   const __WD_MANAGER_LAUNCHER_ID = 'wd-manager-launcher';
   const __WD_MANAGER_LAUNCHER_STYLE_ID = 'wd-manager-launcher-style';
+  const __WD_MANAGER_LAUNCHER_POSITION_KEY = 'worlddex.boxManager.v1.18.launcherPosition';
 
   function __wdManagerEnsureLauncher() {
     let launcher = document.getElementById(__WD_MANAGER_LAUNCHER_ID);
@@ -37,9 +38,102 @@
     launcher.id = __WD_MANAGER_LAUNCHER_ID;
     launcher.type = 'button';
     launcher.textContent = 'Box Manager';
-    launcher.title = 'Open Worlddex Box Manager';
-    launcher.addEventListener('click', () => window.__WORLDDEX_BOX_MANAGER_OPEN?.());
+    launcher.title = 'Drag to move · click to open Worlddex Box Manager';
+    launcher.style.touchAction = 'none';
     document.body.appendChild(launcher);
+
+    const MARGIN = 6;
+    const DRAG_THRESHOLD = 5;
+    let drag = null;
+    let suppressClick = false;
+
+    const clampLauncher = (left, top) => {
+      const rect = launcher.getBoundingClientRect();
+      const maxLeft = Math.max(MARGIN, window.innerWidth - rect.width - MARGIN);
+      const maxTop = Math.max(MARGIN, window.innerHeight - rect.height - MARGIN);
+      return {
+        left: Math.min(Math.max(MARGIN, Number(left) || MARGIN), maxLeft),
+        top: Math.min(Math.max(MARGIN, Number(top) || MARGIN), maxTop)
+      };
+    };
+
+    const applyLauncherPosition = (left, top, save = false) => {
+      const pos = clampLauncher(left, top);
+      launcher.style.left = `${Math.round(pos.left)}px`;
+      launcher.style.top = `${Math.round(pos.top)}px`;
+      launcher.style.right = 'auto';
+      if (save) {
+        try {
+          localStorage.setItem(__WD_MANAGER_LAUNCHER_POSITION_KEY, JSON.stringify({
+            left: Math.round(pos.left),
+            top: Math.round(pos.top)
+          }));
+        } catch {}
+      }
+    };
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(__WD_MANAGER_LAUNCHER_POSITION_KEY) || 'null');
+      if (saved && Number.isFinite(Number(saved.left)) && Number.isFinite(Number(saved.top))) {
+        requestAnimationFrame(() => applyLauncherPosition(Number(saved.left), Number(saved.top), false));
+      }
+    } catch {}
+
+    launcher.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      const rect = launcher.getBoundingClientRect();
+      drag = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        dx: e.clientX - rect.left,
+        dy: e.clientY - rect.top,
+        moved: false
+      };
+      try { launcher.setPointerCapture(e.pointerId); } catch {}
+    });
+
+    launcher.addEventListener('pointermove', e => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      const distance = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+      if (!drag.moved && distance < DRAG_THRESHOLD) return;
+      drag.moved = true;
+      launcher.style.cursor = 'grabbing';
+      applyLauncherPosition(e.clientX - drag.dx, e.clientY - drag.dy, false);
+      e.preventDefault();
+    });
+
+    const finishLauncherDrag = e => {
+      if (!drag || (e?.pointerId != null && e.pointerId !== drag.pointerId)) return;
+      if (drag.moved) {
+        const rect = launcher.getBoundingClientRect();
+        applyLauncherPosition(rect.left, rect.top, true);
+        suppressClick = true;
+      }
+      try {
+        if (e?.pointerId != null) launcher.releasePointerCapture(e.pointerId);
+      } catch {}
+      drag = null;
+      launcher.style.cursor = 'pointer';
+    };
+
+    launcher.addEventListener('pointerup', finishLauncherDrag);
+    launcher.addEventListener('pointercancel', finishLauncherDrag);
+    launcher.addEventListener('click', e => {
+      if (suppressClick) {
+        suppressClick = false;
+        e.preventDefault();
+        return;
+      }
+      window.__WORLDDEX_BOX_MANAGER_OPEN?.();
+    });
+
+    window.addEventListener('resize', () => {
+      if (!launcher.isConnected || launcher.style.right !== 'auto') return;
+      const rect = launcher.getBoundingClientRect();
+      applyLauncherPosition(rect.left, rect.top, true);
+    });
+
     return launcher;
   }
 
@@ -270,7 +364,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.18.4 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.5 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -676,7 +770,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.18.4
+      // FAMILY / BREEDING DECISIONS v1.18.5
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1652,7 +1746,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.18.4 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.5 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1857,7 +1951,7 @@ No Pokémon will be moved or released.`)) return;
 
 
       // ─────────────────────────────────────────────────────────────
-      // BREED PLANNER v1.18.4
+      // BREED PLANNER v1.18.5
       // Goal-first planner: choose the Pokémon you want, then rank legal pairs
       // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
       // preference because Worlddex warns that different species produce Eggs
@@ -2415,9 +2509,59 @@ No Pokémon will be moved or released.`)) return;
         </section>`;
       }
 
+      const BREED_PLANNER_FORM_KEY = 'worlddex.boxManager.v1.18.breedPlannerForm';
       let breedPlannerLastResults = [];
       let breedPlannerLastDesired = null;
       let breedPlannerLastTarget = null;
+
+      function loadBreedPlannerFormState() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(BREED_PLANNER_FORM_KEY) || 'null');
+          if (!raw || typeof raw !== 'object') return null;
+          return {
+            targetName:String(raw.targetName || ''),
+            nature:BREED_NATURES.includes(raw.nature) ? raw.nature : 'Any',
+            ability:String(raw.ability || 'Any') || 'Any',
+            requiredStats:Array.isArray(raw.requiredStats)
+              ? raw.requiredStats.filter(stat => STATS.includes(stat))
+              : [],
+            sameSpeciesOnly:!!raw.sameSpeciesOnly
+          };
+        } catch { return null; }
+      }
+
+      function saveBreedPlannerFormState() {
+        const targetName=String(document.getElementById('wd-breed-target')?.value || '').trim();
+        const nature=String(document.getElementById('wd-breed-nature')?.value || 'Any');
+        const ability=String(document.getElementById('wd-breed-ability')?.value || 'Any').trim() || 'Any';
+        const requiredStats=STATS.filter(stat => document.querySelector(`[data-breed-iv="${stat}"]`)?.checked);
+        const sameSpeciesOnly=!!document.getElementById('wd-breed-same-only')?.checked;
+        try {
+          localStorage.setItem(BREED_PLANNER_FORM_KEY, JSON.stringify({
+            targetName,nature,ability,requiredStats,sameSpeciesOnly
+          }));
+        } catch {}
+      }
+
+      function breedPlannerPrefillFromState(state) {
+        if(!state) return false;
+        const target=document.getElementById('wd-breed-target');
+        const nature=document.getElementById('wd-breed-nature');
+        const ability=document.getElementById('wd-breed-ability');
+        if(target) target.value=state.targetName || '';
+        if(nature) nature.value=state.nature || 'Any';
+        if(ability) ability.value=state.ability || 'Any';
+        const sameOnly=document.getElementById('wd-breed-same-only');
+        if(sameOnly) sameOnly.checked=!!state.sameSpeciesOnly;
+        const req=new Set((state.requiredStats || []).filter(stat=>STATS.includes(stat)));
+        if(req.size){
+          for(const stat of STATS){
+            const el=document.querySelector(`[data-breed-iv="${stat}"]`);
+            if(el) el.checked=req.has(stat);
+          }
+        }
+        return !!String(state.targetName || '').trim();
+      }
 
       function breedPlannerReadForm() {
         const target = breedPlannerResolveTarget(document.getElementById('wd-breed-target')?.value);
@@ -2433,14 +2577,20 @@ No Pokémon will be moved or released.`)) return;
       function renderBreedPlannerResults() {
         const out = document.getElementById('wd-breed-results');
         const status = document.getElementById('wd-breed-status');
+        const calculated = document.getElementById('wd-breed-calculated');
+        const recalc = document.getElementById('wd-breed-calculate');
         if (!out) return;
         const form = breedPlannerReadForm();
         if (form.error) {
           breedPlannerLastResults=[]; breedPlannerLastDesired=null; breedPlannerLastTarget=null;
           out.innerHTML=`<div class="wdbp-empty">${escHtml(form.error)}</div>`;
           if(status) status.textContent='';
+          if(calculated) calculated.textContent='';
+          if(recalc) recalc.innerHTML='<b>Find best pair</b>';
           return;
         }
+        saveBreedPlannerFormState();
+        if(recalc) recalc.innerHTML='<b>Recalculate best pair</b>';
         const {target,desired}=form;
         breedPlannerLastTarget=target; breedPlannerLastDesired=desired;
 
@@ -2455,9 +2605,11 @@ No Pokémon will be moved or released.`)) return;
         if (!breedPlannerLastResults.length) {
           out.innerHTML=`<div class="wdbp-empty">No legal ${desired.sameSpeciesOnly?'same-species ':''}pair was found in Box + Team + Nursery for ${escHtml(publicSpeciesName(target.name))}.${desired.sameSpeciesOnly?' Disable “Only same species” to allow compatible Egg Group crosses.':''}</div>`;
           if(status) status.textContent=`Egg species: ${publicSpeciesName(target.eggName)}`;
+          if(calculated) calculated.textContent=`Calculated from current Box + Team + Nursery · ${new Date().toLocaleTimeString()}`;
           return;
         }
         if(status) status.textContent=`Final target: ${publicSpeciesName(target.name)} · Egg species: ${publicSpeciesName(target.eggName)} · ${breedPlannerIvLabel(desired.requiredStats)}${desired.sameSpeciesOnly?' · SAME-SPECIES ONLY':''}`;
+        if(calculated) calculated.textContent=`Calculated from current Box + Team + Nursery · ${new Date().toLocaleTimeString()}`;
         const [best,...alts]=breedPlannerLastResults;
         out.innerHTML=breedPlannerResultHtml(best,0,desired) + breedPlannerPathHtml(best.path,desired,target) + alts.map((r,i)=>breedPlannerResultHtml(r,i+1,desired)).join('');
         out.querySelectorAll('[data-save-breed-result]').forEach(btn => btn.addEventListener('click',()=>saveBreedPlannerResult(Number(btn.dataset.saveBreedResult))));
@@ -2513,7 +2665,7 @@ No Pokémon will be moved or released.`)) return;
         if(msg) msg.innerHTML=`Saved <b>${escHtml(plan.targetName)}</b> as <b>${mode===FAMILY_MODE.BREED?'BREED NOW':'TO-BE'}</b> in Breeding Projects.`;
       }
 
-      function breedPlannerApplyPreset(name) {
+      function breedPlannerApplyPreset(name, render=true) {
         const sets={
           physical:['hp','atk','def','spd','spe'],
           special:['hp','def','spa','spd','spe'],
@@ -2525,24 +2677,18 @@ No Pokémon will be moved or released.`)) return;
           const el=document.querySelector(`[data-breed-iv="${stat}"]`);
           if(el) el.checked=wanted.includes(stat);
         }
-        renderBreedPlannerResults();
+        if(render){ saveBreedPlannerFormState(); renderBreedPlannerResults(); }
       }
 
       function breedPlannerPrefillFromPlan(plan) {
         if(!plan) return;
-        const target=document.getElementById('wd-breed-target');
-        const nature=document.getElementById('wd-breed-nature');
-        const ability=document.getElementById('wd-breed-ability');
-        if(target) target.value=plan.targetName || '';
-        if(nature) nature.value=plan.nature || 'Any';
-        if(ability) ability.value=plan.ability || 'Any';
-        const sameOnly=document.getElementById('wd-breed-same-only');
-        if(sameOnly) sameOnly.checked=!!plan.sameSpeciesOnly;
-        const req=new Set(plan.requiredStats || []);
-        for(const stat of STATS){
-          const el=document.querySelector(`[data-breed-iv="${stat}"]`);
-          if(el) el.checked=req.has(stat);
-        }
+        breedPlannerPrefillFromState({
+          targetName:plan.targetName || '',
+          nature:plan.nature || 'Any',
+          ability:plan.ability || 'Any',
+          requiredStats:[...(plan.requiredStats || [])],
+          sameSpeciesOnly:!!plan.sameSpeciesOnly
+        });
       }
 
       function mountBreedPlannerPanel(familyKeyToOpen=null) {
@@ -2562,9 +2708,10 @@ No Pokémon will be moved or released.`)) return;
           #wd-breed-planner-v116 .wdbp-ivs label{display:flex;flex-direction:row;align-items:center;gap:4px;background:#171f2b;border:1px solid #334156;border-radius:7px;padding:5px 7px;color:#dce5f0}
           #wd-breed-planner-v116 .wdbp-ivs input{width:auto;margin:0;padding:0}
           #wd-breed-planner-v116 button{border:1px solid #3b485d;background:#202938;color:#e8edf5;border-radius:7px;padding:6px 9px;cursor:pointer} #wd-breed-planner-v116 button:hover{background:#2a3648}
+          #wd-breed-planner-v116 #wd-breed-calculate{margin-left:auto;background:#245a3a;border-color:#327d50;font-weight:700}#wd-breed-planner-v116 #wd-breed-calculate:hover{background:#2d7148}
           #wd-breed-planner-v116 .wdbp-presets{display:flex;gap:5px;margin-left:4px;flex-wrap:wrap}
           #wd-breed-planner-v116 .wdbp-fast-only{display:flex;flex-direction:row;align-items:center;gap:6px;margin-left:5px;background:#172417;border:1px solid #365f3c;border-radius:7px;padding:5px 8px;color:#bfe5c4;white-space:nowrap}#wd-breed-planner-v116 .wdbp-fast-only input{width:auto;margin:0;padding:0}
-          #wd-breed-planner-v116 .wdbp-meta{padding:7px 12px;border-bottom:1px solid #2d3849;color:#9eacbf;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.wdbp-meta .msg{color:#9fd6b9}
+          #wd-breed-planner-v116 .wdbp-meta{padding:7px 12px;border-bottom:1px solid #2d3849;color:#9eacbf;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.wdbp-meta .msg{color:#9fd6b9}#wd-breed-planner-v116 .wdbp-meta .calc{margin-left:auto;color:#7fbf93;font-size:11px;white-space:nowrap}
           #wd-breed-planner-v116 .wdbp-results{flex:1;min-height:0;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:10px;scrollbar-gutter:stable}
           #wd-breed-planner-v116 .wdbp-result{border:1px solid #303d50;background:#151c27;border-radius:10px;overflow:hidden;flex:0 0 auto} #wd-breed-planner-v116 .wdbp-result.best{border-color:#4d7897}
           #wd-breed-planner-v116 .wdbp-result-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:#1a2431;border-bottom:1px solid #303d50}
@@ -2600,6 +2747,8 @@ No Pokémon will be moved or released.`)) return;
             #wd-breed-planner-v116 .wdbp-explain,#wd-breed-planner-v116 .wdbp-output-meta{grid-template-columns:1fr}
             #wd-breed-planner-v116 details.wdbp-alt>summary{align-items:flex-start;flex-direction:column;gap:3px}
             #wd-breed-planner-v116 .wdbp-path-head{align-items:flex-start;flex-direction:column}
+            #wd-breed-planner-v116 #wd-breed-calculate{margin-left:0}
+            #wd-breed-planner-v116 .wdbp-meta .calc{margin-left:0;white-space:normal}
           }
         `;
         document.head.appendChild(style);
@@ -2612,9 +2761,9 @@ No Pokémon will be moved or released.`)) return;
             <label>Desired Pokémon<input id="wd-breed-target" list="wd-breed-species-list" placeholder="e.g. Charizard"><datalist id="wd-breed-species-list">${species.map(x=>`<option value="${escAttr(x.name)}"></option>`).join('')}</datalist></label>
             <label>Desired nature<select id="wd-breed-nature">${natureOpts}</select></label>
             <label>Desired ability<input id="wd-breed-ability" list="wd-breed-ability-list" value="Any" placeholder="Any"><datalist id="wd-breed-ability-list"></datalist></label>
-            <div class="wdbp-ivs"><b style="color:#e8edf5">Desired 31s:</b>${STATS.map(stat=>`<label><input type="checkbox" data-breed-iv="${stat}" checked>${stat.toUpperCase()}</label>`).join('')}<label class="wdbp-fast-only" title="Restrict the entire planned path to same-species pairings for faster Egg production. The planner may tell you to evolve an offspring before the next cross."><input type="checkbox" id="wd-breed-same-only">Only same species</label><div class="wdbp-presets"><button data-breed-preset="physical">Physical 5×31</button><button data-breed-preset="special">Special 5×31</button><button data-breed-preset="six">6×31</button></div><button id="wd-breed-calculate" style="margin-left:auto;background:#315878;border-color:#4c7ca3"><b>Find best pair</b></button></div>
+            <div class="wdbp-ivs"><b style="color:#e8edf5">Desired 31s:</b>${STATS.map(stat=>`<label><input type="checkbox" data-breed-iv="${stat}" checked>${stat.toUpperCase()}</label>`).join('')}<label class="wdbp-fast-only" title="Restrict the entire planned path to same-species pairings for faster Egg production. The planner may tell you to evolve an offspring before the next cross."><input type="checkbox" id="wd-breed-same-only">Only same species</label><div class="wdbp-presets"><button data-breed-preset="physical">Physical 5×31</button><button data-breed-preset="special">Special 5×31</button><button data-breed-preset="six">6×31</button></div><button id="wd-breed-calculate"><b>Find best pair</b></button></div>
           </div>
-          <div class="wdbp-meta"><span id="wd-breed-status"></span><span id="wd-breed-save-msg" class="msg"></span></div>
+          <div class="wdbp-meta"><span id="wd-breed-status"></span><span id="wd-breed-save-msg" class="msg"></span><span id="wd-breed-calculated" class="calc"></span></div>
           <div id="wd-breed-results" class="wdbp-results"><div class="wdbp-empty">Choose a target Pokémon to rank your best owned breeding pairs.</div></div>
           <div class="wdbp-foot">“Only same species” restricts the full path to fast same-species pairings. Per-Egg odds are estimates from the standard Destiny Knot / Power Item IV inheritance model; ability inheritance and Worlddex Egg-generation timing are not included until their exact server rules are confirmed.</div>`;
         managerAttachView(panel,'.wdbp-head');
@@ -2626,19 +2775,27 @@ No Pokémon will be moved or released.`)) return;
           const vals=[...new Set(breedPlannerTargetFamilyOwned(target).map(m=>String(m.ability||'')).filter(Boolean))].sort();
           dl.innerHTML=vals.map(v=>`<option value="${escAttr(v)}"></option>`).join('');
         };
-        document.getElementById('wd-breed-target').addEventListener('change',()=>{updateAbilities();renderBreedPlannerResults();});
-        document.getElementById('wd-breed-nature').addEventListener('change',renderBreedPlannerResults);
-        document.getElementById('wd-breed-ability').addEventListener('change',renderBreedPlannerResults);
-        document.getElementById('wd-breed-same-only').addEventListener('change',renderBreedPlannerResults);
-        document.getElementById('wd-breed-calculate').addEventListener('click',()=>{updateAbilities();renderBreedPlannerResults();});
-        document.querySelectorAll('[data-breed-iv]').forEach(el=>el.addEventListener('change',renderBreedPlannerResults));
-        document.querySelectorAll('[data-breed-preset]').forEach(el=>el.addEventListener('click',()=>breedPlannerApplyPreset(el.dataset.breedPreset)));
+        const persistAndRender=()=>{ saveBreedPlannerFormState(); renderBreedPlannerResults(); };
+        document.getElementById('wd-breed-target').addEventListener('change',()=>{saveBreedPlannerFormState();updateAbilities();renderBreedPlannerResults();});
+        document.getElementById('wd-breed-nature').addEventListener('change',persistAndRender);
+        document.getElementById('wd-breed-ability').addEventListener('change',persistAndRender);
+        document.getElementById('wd-breed-same-only').addEventListener('change',persistAndRender);
+        document.getElementById('wd-breed-calculate').addEventListener('click',()=>{saveBreedPlannerFormState();updateAbilities();renderBreedPlannerResults();});
+        document.querySelectorAll('[data-breed-iv]').forEach(el=>el.addEventListener('change',persistAndRender));
+        document.querySelectorAll('[data-breed-preset]').forEach(el=>el.addEventListener('click',()=>breedPlannerApplyPreset(el.dataset.breedPreset,true)));
 
-        // Better default than 6×31 for most physical attackers.
-        breedPlannerApplyPreset('physical');
+        // Establish the physical 5×31 checkbox pattern without rendering yet;
+        // a saved last intent or explicit saved project may replace it below.
+        breedPlannerApplyPreset('physical',false);
+        let hasRememberedTarget=false;
         if(familyKeyToOpen && breedPlans.has(familyKeyToOpen)){
-          breedPlannerPrefillFromPlan(breedPlans.get(familyKeyToOpen)); updateAbilities(); renderBreedPlannerResults();
+          breedPlannerPrefillFromPlan(breedPlans.get(familyKeyToOpen));
+          hasRememberedTarget=true;
+        } else {
+          hasRememberedTarget=breedPlannerPrefillFromState(loadBreedPlannerFormState());
         }
+        updateAbilities();
+        if(hasRememberedTarget) renderBreedPlannerResults();
       }
 
 
@@ -2953,7 +3110,7 @@ No Pokémon will be moved or released.`)) return;
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.18.4</b>
+              <b>Worlddex Box Manager v1.18.5</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
@@ -3213,6 +3370,7 @@ No Pokémon will be moved or released.`)) return;
         line.className = `wdcl-logline wdcl-${kind}`;
         line.textContent = `[${t}] ${msg}`;
         el.prepend(line);
+        while (el.children.length > 160) el.lastElementChild?.remove();
       }
 
       function selectedCount() {
@@ -3692,7 +3850,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.18.4) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.5) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -3939,7 +4097,7 @@ No Pokémon will be moved or released.`)) return;
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.18.4
+      // BOX ORGANIZER v1.18.5
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -4005,13 +4163,14 @@ No Pokémon will be moved or released.`)) return;
           renameBoxes:false,
           keepFavouritesInPlace:true,
           layoutPriority:'balanced',
+          boxDirection:'descending',
           categoryOrder:[...ORGANIZER_SECTION_DEFAULT_ORDER]
         },
         recommended: {
           keepTrainedTogether:true,
           trainedEv:true,
           trainedLevel:true,
-          trainedLevelMin:80,
+          trainedLevelMin:100,
           keepBreedersTogether:true,
           keepSynchronizeTogether:false,
           keepDexTasksTogether:true,
@@ -4019,6 +4178,7 @@ No Pokémon will be moved or released.`)) return;
           renameBoxes:true,
           keepFavouritesInPlace:false,
           layoutPriority:'balanced',
+          boxDirection:'descending',
           categoryOrder:[...ORGANIZER_SECTION_DEFAULT_ORDER]
         },
         functional: {
@@ -4033,6 +4193,7 @@ No Pokémon will be moved or released.`)) return;
           renameBoxes:true,
           keepFavouritesInPlace:false,
           layoutPriority:'balanced',
+          boxDirection:'descending',
           categoryOrder:[...ORGANIZER_SECTION_DEFAULT_ORDER]
         }
       };
@@ -4043,7 +4204,7 @@ No Pokémon will be moved or released.`)) return;
           keepTrainedTogether: raw.keepTrainedTogether ?? base.keepTrainedTogether,
           trainedEv: raw.trainedEv ?? base.trainedEv,
           trainedLevel: raw.trainedLevel ?? base.trainedLevel,
-          trainedLevelMin: Math.max(1, Math.min(100, Number(raw.trainedLevelMin ?? base.trainedLevelMin) || 80)),
+          trainedLevelMin: Math.max(1, Math.min(100, Number(raw.trainedLevelMin ?? base.trainedLevelMin) || 100)),
           keepBreedersTogether: raw.keepBreedersTogether ?? base.keepBreedersTogether,
           keepSynchronizeTogether: raw.keepSynchronizeTogether ?? base.keepSynchronizeTogether,
           keepDexTasksTogether: raw.keepDexTasksTogether ?? base.keepDexTasksTogether,
@@ -4053,6 +4214,12 @@ No Pokémon will be moved or released.`)) return;
           layoutPriority: ['balanced','min_moves','ordered'].includes(raw.layoutPriority)
             ? raw.layoutPriority
             : (base.layoutPriority || 'balanced'),
+          boxDirection: ['descending','ascending'].includes(raw.boxDirection)
+            ? raw.boxDirection
+            : (base.boxDirection || 'descending'),
+          boxCount: Math.max(1, Math.min(100, Number(raw.boxCount ?? 32) || 32)),
+          capacity: Math.max(1, Math.min(99, Number(raw.capacity ?? 99) || 99)),
+          autoOwnMin: Math.max(1, Math.min(100, Number(raw.autoOwnMin ?? 12) || 12)),
           categoryOrder: normalizeOrganizerSectionOrder(
             raw.categoryOrder || base.categoryOrder
           ),
@@ -4079,6 +4246,9 @@ No Pokémon will be moved or released.`)) return;
 
         organizerPrefsState = normalizeOrganizerPrefs({
           ...preset,
+          boxCount:organizerPrefsState.boxCount,
+          capacity:organizerPrefsState.capacity,
+          autoOwnMin:organizerPrefsState.autoOwnMin,
           categoryOrder:organizerPrefsState.categoryOrder,
           preset:name
         });
@@ -4092,7 +4262,7 @@ No Pokémon will be moved or released.`)) return;
       function organizerIsTrained(m, prefs = organizerPrefsState) {
         if (!prefs.keepTrainedTogether) return false;
         const evReady = prefs.trainedEv && (evTotal(m) >= 200 || organizerMaxEV(m) >= 100);
-        const levelReady = prefs.trainedLevel && Number(m?.lvl || 0) >= Number(prefs.trainedLevelMin || 80);
+        const levelReady = prefs.trainedLevel && Number(m?.lvl || 0) >= Number(prefs.trainedLevelMin || 100);
         return evReady || levelReady;
       }
 
@@ -4167,7 +4337,7 @@ No Pokémon will be moved or released.`)) return;
         if (category==='BATTLE_READY') {
           const parts=[];
           if (evTotal(m) >= 200 || organizerMaxEV(m) >= 100) parts.push(`${evTotal(m)} EVs`);
-          if (Number(m.lvl||0) >= Number(organizerPrefsState.trainedLevelMin||80)) parts.push(`Lv.${Number(m.lvl||0)}`);
+          if (Number(m.lvl||0) >= Number(organizerPrefsState.trainedLevelMin||100)) parts.push(`Lv.${Number(m.lvl||0)}`);
           return parts.join(' · ') || 'Trained';
         }
         if (category==='PINNED') return 'Favourite — stays in its current box';
@@ -4370,7 +4540,8 @@ No Pokémon will be moved or released.`)) return;
         boxCount,
         capacity = ORGANIZER_SAFE_CAPACITY,
         pinnedCounts = new Map(),
-        layoutPriority = 'balanced'
+        layoutPriority = 'balanced',
+        boxDirection = 'descending'
       ) {
         if (!boxDefs.length) return {
           targets: [],
@@ -4401,6 +4572,7 @@ No Pokémon will be moved or released.`)) return;
         const mode = ['balanced','min_moves','ordered'].includes(layoutPriority)
           ? layoutPriority
           : 'balanced';
+        const direction = boxDirection === 'ascending' ? 'ascending' : 'descending';
 
         const weights = mode === 'min_moves'
           ? { stay:1_000_000, name:5_000, exact:100, nearPerBox:1 }
@@ -4444,11 +4616,12 @@ No Pokémon will be moved or released.`)) return;
                 ? SCORE_NAME_MATCH
                 : 0;
 
-            // Canonical physical placement is descending: logical group 0 ->
-            // the highest PC box, then work backwards. In Balanced / Ordered this
-            // is intentionally strong enough to keep the organized block at the
-            // high end instead of sacrificing the buffer just to save a few moves.
-            const canonicalBox = boxCount - 1 - defIndex;
+            // Canonical placement follows the player's selected physical
+            // direction. Descending remains the recommended default because it
+            // leaves low-numbered boxes as the natural Worlddex intake buffer.
+            const canonicalBox = direction === 'ascending'
+              ? defIndex
+              : boxCount - 1 - defIndex;
             const distance = Math.abs(physicalBox - canonicalBox);
             const canonical =
               physicalBox === canonicalBox
@@ -4472,11 +4645,11 @@ No Pokémon will be moved or released.`)) return;
           const cost=scores.map(row=>row.map(score=>maxScore-score));
           targets=hungarianMin(cost);
         } else {
-          // Balanced and Ordered both respect the user's Category order while
-          // traversing physical boxes in reverse. This keeps the organized block
-          // at the end of the PC (Box 32, 31, 30...) and leaves early boxes as the
-          // natural landing zone for new captures.
-          targets=maxScoreDescendingAssignment(scores);
+          // Balanced and Ordered respect the user's Category order. Physical
+          // traversal follows the separate Box direction preference.
+          targets = direction === 'ascending'
+            ? maxScoreIncreasingAssignment(scores)
+            : maxScoreDescendingAssignment(scores);
         }
 
         let stayed = 0;
@@ -4820,7 +4993,8 @@ No Pokémon will be moved or released.`)) return;
           boxCount,
           capacity,
           pinnedCounts,
-          prefs.layoutPriority
+          prefs.layoutPriority,
+          prefs.boxDirection
         );
 
         boxDefs.forEach((def,defIndex)=>{
@@ -4938,7 +5112,10 @@ No Pokémon will be moved or released.`)) return;
           renameEnabled:!!prefs.renameBoxes,
           renameChanges,
           layoutPriority:prefs.layoutPriority,
-          physicalDirection:prefs.layoutPriority === 'min_moves' ? 'move-optimized' : 'descending-high-boxes-first',
+          boxDirection:prefs.boxDirection,
+          physicalDirection:prefs.layoutPriority === 'min_moves'
+            ? 'move-optimized'
+            : (prefs.boxDirection === 'ascending' ? 'ascending-low-boxes-first' : 'descending-high-boxes-first'),
           categoryOrder:[...sectionOrder],
           activeSections:[...activeSections],
           breedingOrganizationEnabled:!!prefs.keepBreedersTogether,
@@ -4995,6 +5172,7 @@ No Pokémon will be moved or released.`)) return;
         line.className = `wdorg-logline wdorg-${kind}`;
         line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
         el.prepend(line);
+        while (el.children.length > 160) el.lastElementChild?.remove();
       }
 
       function renderOrganizerBoxRows(plan = organizerPlan) {
@@ -5068,7 +5246,14 @@ No Pokémon will be moved or released.`)) return;
         );
         if (capEl && Number(capEl.value) !== capacity) capEl.value = String(capacity);
 
-        const autoOwnMin = Number(document.getElementById('wd-organizer-ownmin')?.value || 12);
+        const autoOwnMin = Math.max(1, Math.min(100, Number(document.getElementById('wd-organizer-ownmin')?.value || 12) || 12));
+        organizerPrefsState = normalizeOrganizerPrefs({
+          ...organizerPrefsState,
+          boxCount,
+          capacity,
+          autoOwnMin
+        });
+        saveOrganizerPrefs();
         try {
           organizerPlan = buildOrganizerPlan(boxCount, capacity, autoOwnMin, organizerPrefsState);
           renderOrganizerBoxRows(organizerPlan);
@@ -5077,10 +5262,13 @@ No Pokémon will be moved or released.`)) return;
             : organizerPlan.layoutPriority === 'min_moves'
               ? 'Minimize moves'
               : 'Balanced';
+          const directionLabel = organizerPlan.boxDirection === 'ascending'
+            ? 'Box 1 → 32'
+            : 'Box 32 → 1';
           logOrganizer(
             `Preview updated: ${organizerPlan.moves.length} move(s), ` +
             `${organizerPlan.alreadyPlaced} already in place · ${layoutLabel}` +
-            `${organizerPlan.layoutPriority === 'min_moves' ? '' : ' · Box 32 → 1'}.`,
+            `${organizerPlan.layoutPriority === 'min_moves' ? '' : ` · ${directionLabel}`}.`,
             'ok'
           );
           updateOrganizerApplyButton(organizerPlan, false);
@@ -5766,8 +5954,9 @@ No Pokémon will be moved or released.`)) return;
         document.getElementById('wd-box-organizer-v14')?.remove();
         document.getElementById('wd-box-organizer-v14-style')?.remove();
 
-        const initialBoxes = detectBoxCount();
-        const initialCap = detectBoxCapacity();
+        const initialBoxes = Number(organizerPrefsState.boxCount || detectBoxCount());
+        const initialCap = Math.min(ORGANIZER_SAFE_CAPACITY, Number(organizerPrefsState.capacity || detectBoxCapacity()));
+        const initialOwnMin = Number(organizerPrefsState.autoOwnMin || 12);
 
         const style = document.createElement('style');
         style.id = 'wd-box-organizer-v14-style';
@@ -5925,7 +6114,7 @@ No Pokémon will be moved or released.`)) return;
           #wd-box-organizer-v14 .wdorg-foot { display:grid; grid-template-columns:1fr minmax(300px,40%); flex:0 0 auto; max-height:190px; border-top:1px solid #2d3849; background:#0e141c; }
           #wd-box-organizer-v14 .wdorg-note { padding:10px 12px; color:#aab6c6; }
           #wd-box-organizer-v14 .wdorg-note b { color:#fff; }
-          #wd-box-organizer-v14 #wd-organizer-log { border-left:1px solid #2d3849; padding:8px 10px; overflow:auto; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:11px; }
+          #wd-box-organizer-v14 #wd-organizer-log { border-left:1px solid #2d3849; padding:8px 10px; height:76px; min-height:76px; max-height:76px; align-self:end; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:11px; }
           #wd-box-organizer-v14 .wdorg-logline { margin-bottom:3px; }
           #wd-box-organizer-v14 .wdorg-ok { color:#72df9b; }
           #wd-box-organizer-v14 .wdorg-warn { color:#f1c46c; }
@@ -5972,7 +6161,7 @@ No Pokémon will be moved or released.`)) return;
                 <input id="wd-organizer-cap" type="number" min="1" max="99" value="${initialCap}">
               </label>
               <label class="wdorg-field">Private breeding-family box from
-                <input id="wd-organizer-ownmin" type="number" min="1" max="100" value="12" title="Only used when Breeding Projects are enabled for organization.">
+                <input id="wd-organizer-ownmin" type="number" min="1" max="100" value="${initialOwnMin}" title="Only used when Breeding Projects are enabled for organization.">
               </label>
               <button id="wd-organizer-rebuild">Update preview</button>
               <button id="wd-organizer-export">Export plan</button>
@@ -5990,15 +6179,20 @@ No Pokémon will be moved or released.`)) return;
                 </select>
                 <b style="margin-left:10px">Layout priority</b>
                 <select id="wd-organizer-layout-priority">
-                  <option value="balanced">Balanced (recommended · Box 32 → 1)</option>
+                  <option value="balanced">Balanced (recommended)</option>
                   <option value="min_moves">Minimize moves</option>
-                  <option value="ordered">Keep boxes ordered (32 → 1)</option>
+                  <option value="ordered">Keep boxes ordered</option>
+                </select>
+                <b>Box direction</b>
+                <select id="wd-organizer-box-direction" title="32 → 1 is recommended because Worlddex fills the first available PC space.">
+                  <option value="descending">32 → 1 (recommended)</option>
+                  <option value="ascending">1 → 32</option>
                 </select>
               </div>
               <div class="wdorg-checks">
                 <label><input id="wd-org-trained" type="checkbox"> Keep trained Pokémon together</label>
                 <label class="sub"><input id="wd-org-trained-ev" type="checkbox"> EV-trained</label>
-                <label class="sub"><input id="wd-org-trained-level" type="checkbox"> Level <input id="wd-org-level-min" type="number" min="1" max="100" value="80">+</label>
+                <label class="sub"><input id="wd-org-trained-level" type="checkbox"> Level <input id="wd-org-level-min" type="number" min="1" max="100" value="100">+</label>
                 <label><input id="wd-org-breeders" type="checkbox"> Use Breeding Projects when organizing</label>
                 <label><input id="wd-org-sync" type="checkbox"> Keep Synchronize Pokémon together</label>
                 <label><input id="wd-org-dex" type="checkbox"> Keep Pokédex tasks together</label>
@@ -6023,7 +6217,8 @@ No Pokémon will be moved or released.`)) return;
                 <summary>What do these options mean?</summary>
                 <div>
                   <b>Organization style:</b> Minimal keeps fewer separate groups; Recommended is the normal default; Functional separates every useful group.<br>
-                  <b>Layout priority:</b> Balanced and Keep boxes ordered fill the PC from Box 32 downward, leaving the earliest boxes free for new captures. Balanced may leave a small gap when it meaningfully saves moves; Keep boxes ordered follows the selected section order as tightly as possible. Minimize moves prioritizes keeping Pokémon where they already are and may ignore the high-box-first layout.<br>
+                  <b>Layout priority:</b> Balanced may leave a small gap when it meaningfully saves moves; Keep boxes ordered follows the selected section order as tightly as possible; Minimize moves prioritizes keeping Pokémon where they already are.<br>
+                  <b>Box direction:</b> 32 → 1 is recommended because it leaves the earliest boxes free for new captures / received Pokémon. 1 → 32 is available if you prefer the traditional low-box-first layout. Minimize moves may ignore this preference when fewer moves conflict with physical direction.<br>
                   <b>Customize box order:</b> the editor only shows sections that actually exist in the current preview, so a Minimal setup stays minimal instead of showing unused categories.<br>
                   <b>Breeding Projects:</b> when disabled, breeding families are treated like normal collection Pokémon for organization. Cleaner protection is unchanged.<br>
                   <b>Battle Ready:</b> a Pokémon qualifies through the selected EV or level rules.<br>
@@ -6090,7 +6285,7 @@ No Pokémon will be moved or released.`)) return;
           setChecked('wd-org-trained',p.keepTrainedTogether); setChecked('wd-org-trained-ev',p.trainedEv); setChecked('wd-org-trained-level',p.trainedLevel);
           setChecked('wd-org-breeders',p.keepBreedersTogether); setChecked('wd-org-sync',p.keepSynchronizeTogether); setChecked('wd-org-dex',p.keepDexTasksTogether);
           setChecked('wd-org-special',p.keepSpecialsTogether); setChecked('wd-org-favourites',p.keepFavouritesInPlace); setChecked('wd-org-rename',p.renameBoxes);
-          const level=document.getElementById('wd-org-level-min'); if(level) level.value=String(p.trainedLevelMin||80);
+          const level=document.getElementById('wd-org-level-min'); if(level) level.value=String(p.trainedLevelMin||100);
           ['wd-org-trained-ev','wd-org-trained-level','wd-org-level-min'].forEach(id=>{
             const el=document.getElementById(id);
             if(el) el.disabled=!p.keepTrainedTogether;
@@ -6108,6 +6303,14 @@ No Pokémon will be moved or released.`)) return;
           if(preset) preset.value=p.preset||'custom';
           const layout=document.getElementById('wd-organizer-layout-priority');
           if(layout) layout.value=p.layoutPriority||'balanced';
+          const direction=document.getElementById('wd-organizer-box-direction');
+          if(direction){
+            direction.value=p.boxDirection||'descending';
+            direction.disabled=(p.layoutPriority==='min_moves');
+            direction.title=p.layoutPriority==='min_moves'
+              ? 'Minimize moves can ignore physical direction to preserve more Pokémon in place.'
+              : '32 → 1 is recommended because Worlddex fills the first available PC space.';
+          }
 
           const order=organizerVisibleSectionOrder(organizerPlan,p);
 
@@ -6145,10 +6348,11 @@ No Pokémon will be moved or released.`)) return;
           const checked=id=>!!document.getElementById(id)?.checked;
           organizerPrefsState=normalizeOrganizerPrefs({...organizerPrefsState,
             keepTrainedTogether:checked('wd-org-trained'), trainedEv:checked('wd-org-trained-ev'), trainedLevel:checked('wd-org-trained-level'),
-            trainedLevelMin:Number(document.getElementById('wd-org-level-min')?.value||80), keepBreedersTogether:checked('wd-org-breeders'),
+            trainedLevelMin:Number(document.getElementById('wd-org-level-min')?.value||100), keepBreedersTogether:checked('wd-org-breeders'),
             keepSynchronizeTogether:checked('wd-org-sync'), keepDexTasksTogether:checked('wd-org-dex'), keepSpecialsTogether:checked('wd-org-special'),
             keepFavouritesInPlace:checked('wd-org-favourites'), renameBoxes:checked('wd-org-rename'),
             layoutPriority:String(document.getElementById('wd-organizer-layout-priority')?.value || 'balanced'),
+            boxDirection:String(document.getElementById('wd-organizer-box-direction')?.value || organizerPrefsState.boxDirection || 'descending'),
             categoryOrder:organizerPrefsState.categoryOrder,
             preset:markCustom?'custom':organizerPrefsState.preset});
           saveOrganizerPrefs();
@@ -6208,7 +6412,7 @@ No Pokémon will be moved or released.`)) return;
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.18.4] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.18.5] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -6227,6 +6431,7 @@ No Pokémon will be moved or released.`)) return;
         ['wd-org-trained','wd-org-trained-ev','wd-org-trained-level','wd-org-breeders','wd-org-sync','wd-org-dex','wd-org-special','wd-org-favourites','wd-org-rename'].forEach(id => bindOrganizer(id,'change',()=>readOrganizerPreferencesFromUI(true)));
         bindOrganizer('wd-org-level-min','change',()=>readOrganizerPreferencesFromUI(true));
         bindOrganizer('wd-organizer-layout-priority','change',()=>readOrganizerPreferencesFromUI(true));
+        bindOrganizer('wd-organizer-box-direction','change',()=>readOrganizerPreferencesFromUI(true));
 
         bindOrganizer('wd-organizer-order-toggle','click',()=>{
           const editor=document.getElementById('wd-organizer-order-editor');
@@ -6507,7 +6712,13 @@ No Pokémon will be moved or released.`)) return;
           #wd-box-cleaner-v13 #wd-cleaner-log {
             border-left:1px solid #2d3849;
             padding:8px 10px;
-            overflow:auto;
+            height:76px;
+            min-height:76px;
+            max-height:76px;
+            align-self:end;
+            overflow-y:auto;
+            overflow-x:hidden;
+            overscroll-behavior:contain;
             font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
             font-size:11px;
           }
@@ -6783,7 +6994,7 @@ No Pokémon will be moved or released.`)) return;
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.18.4] reload failed', err);
+      console.error('[Worlddex Box Manager v1.18.5] reload failed', err);
       __wdManagerShowLauncher();
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;

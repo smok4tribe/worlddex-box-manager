@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.18.5
+
+- The standalone **Box Manager** launcher is now draggable and remembers its screen position; click-vs-drag uses a movement threshold so repositioning does not accidentally open the panel.
+- Added a separate Organizer **Box direction** preference: `32 → 1 (recommended)` remains the default, while `1 → 32` is available without duplicating Layout priority modes.
+- Organizer sizing controls and preferences are persisted locally; new users keep the safe `32 boxes / 99 per box / private family from 12` factory values.
+- Recommended Battle Ready defaults now use EV-trained + **Level 100+** while Synchronize grouping remains off by default.
+- Cleaner and Organizer action logs now stay at a fixed compact height with scrollable history and a bounded in-DOM event count.
+- Breed Planner remembers the last target / Nature / Ability / IV mask / same-species preference, but recalculates pair recommendations from current Box + Team + Nursery data whenever reopened or reloaded.
+- Added a green **Recalculate best pair** action and a small “Calculated from current Box + Team + Nursery” timestamp.
+- No Cleaner release-safety, Organizer interlock/pacing, or breeding-ranking rules were weakened.
+
 ## v1.18.4
 
 - Added an on-demand **Box Manager** launcher: loading the script no longer opens the full manager or reads Box/State data until the player clicks it.
