@@ -6,6 +6,7 @@ on:
       - box-v1-18-6-regional-dex
     paths:
       - ".github/patch_v1186.py"
+      - ".github/retrigger-v1186.txt"
 
 permissions:
   contents: write
@@ -21,6 +22,39 @@ jobs:
 
       - name: Apply reviewed v1.18.6 patch
         run: python .github/patch_v1186.py
+
+      - name: Add resilient labels for confirmed regional evolution items
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('box-manager.js')
+          text = p.read_text(encoding='utf-8')
+          old = """      function evolutionItemLabel(item) {
+                const id = String(item || '').trim();
+                if (!id) return '';
+                return String(ITEM_DB?.[id]?.n || titleCaseSlug(id));
+              }"""
+          new = """      const REGIONAL_EVOLUTION_ITEM_LABELS = {
+                'island-shard':'Island Shard',
+                'ancient-shard':'Ancient Shard',
+                'galarica-cuff':'Galarica Cuff',
+                'galarica-wreath':'Galarica Wreath'
+              };
+
+              function evolutionItemLabel(item) {
+                const id = String(item || '').trim();
+                if (!id) return '';
+                return String(
+                  ITEM_DB?.[id]?.n ||
+                  REGIONAL_EVOLUTION_ITEM_LABELS[id] ||
+                  titleCaseSlug(id)
+                );
+              }"""
+          if text.count(old) != 1:
+              raise SystemExit(f'item-label anchor mismatch: {text.count(old)}')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Validate complete JavaScript and safety markers
         shell: bash
@@ -44,7 +78,7 @@ jobs:
           set -euo pipefail
           git config user.name "smok4tribe"
           git config user.email "57266150+smok4tribe@users.noreply.github.com"
-          git rm -f .github/patch_v1186.py .github/workflows/apply-v1186-test.yml
+          git rm -f .github/patch_v1186.py .github/workflows/apply-v1186-test.yml .github/retrigger-v1186.txt
           git add box-manager.js README.md CHANGELOG.md .github/workflows/build.yml
           git diff --cached --check
           git commit -m "Worlddex Box Manager v1.18.6 test: regional Dex tasks"
