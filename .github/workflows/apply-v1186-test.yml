@@ -30,30 +30,27 @@ jobs:
           from pathlib import Path
           p = Path('box-manager.js')
           text = p.read_text(encoding='utf-8')
-          old = """      function evolutionItemLabel(item) {
-                const id = String(item || '').trim();
-                if (!id) return '';
-                return String(ITEM_DB?.[id]?.n || titleCaseSlug(id));
-              }"""
-          new = """      const REGIONAL_EVOLUTION_ITEM_LABELS = {
-                'island-shard':'Island Shard',
-                'ancient-shard':'Ancient Shard',
-                'galarica-cuff':'Galarica Cuff',
-                'galarica-wreath':'Galarica Wreath'
-              };
+          fn_anchor = "      function evolutionItemLabel(item) {"
+          return_anchor = "        return String(ITEM_DB?.[id]?.n || titleCaseSlug(id));"
+          if text.count(fn_anchor) != 1:
+              raise SystemExit(f'item-label function anchor mismatch: {text.count(fn_anchor)}')
+          if text.count(return_anchor) != 1:
+              raise SystemExit(f'item-label return anchor mismatch: {text.count(return_anchor)}')
+          labels = """      const REGIONAL_EVOLUTION_ITEM_LABELS = {
+        'island-shard':'Island Shard',
+        'ancient-shard':'Ancient Shard',
+        'galarica-cuff':'Galarica Cuff',
+        'galarica-wreath':'Galarica Wreath'
+      };
 
-              function evolutionItemLabel(item) {
-                const id = String(item || '').trim();
-                if (!id) return '';
-                return String(
-                  ITEM_DB?.[id]?.n ||
-                  REGIONAL_EVOLUTION_ITEM_LABELS[id] ||
-                  titleCaseSlug(id)
-                );
-              }"""
-          if text.count(old) != 1:
-              raise SystemExit(f'item-label anchor mismatch: {text.count(old)}')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+"""
+          text = text.replace(fn_anchor, labels + fn_anchor, 1)
+          text = text.replace(
+              return_anchor,
+              "        return String(ITEM_DB?.[id]?.n || REGIONAL_EVOLUTION_ITEM_LABELS[id] || titleCaseSlug(id));",
+              1
+          )
+          p.write_text(text, encoding='utf-8')
           PY
 
       - name: Validate complete JavaScript and safety markers
