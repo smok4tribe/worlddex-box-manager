@@ -364,17 +364,20 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.18.5 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.6 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
 
-      const [boxRes, stateRes, nurseryRes, dataSrc, pcSrc] = await Promise.all([
+      const [boxRes, stateRes, nurseryRes, dataSrc, pcSrc, speciesSrc, battleCoreSrc, itemsSrc] = await Promise.all([
         getJSON('/api/box'),
         getJSON('/api/state'),
         getJSON('/api/nursery').catch(() => ({ held: [] })),
         getText('/js/data.js'),
-        getText('/js/pc.js')
+        getText('/js/pc.js'),
+        getText('/js/species.js').catch(() => ''),
+        getText('/js/battle-core.js').catch(() => ''),
+        getText('/js/items.js').catch(() => '')
       ]);
 
       const mons = Array.isArray(boxRes.mons) ? boxRes.mons : [];
@@ -386,6 +389,12 @@
       const DEX = globalConst('DEX') || extractConst(dataSrc, 'DEX') || {};
       const DEX_EXTRA = globalConst('DEX_EXTRA') || extractConst(dataSrc, 'DEX_EXTRA') || {};
       const FRIEND_INTO = extractConst(pcSrc, 'FRIEND_INTO') || {};
+      // Structured evolution metadata is loaded read-only from Worlddex itself.
+      // It enriches the live mon.evolution payload with item / level / trade data
+      // and mirrors the client's regional-source eligibility rules.
+      const EVOLVE = globalConst('EVOLVE') || extractConst(speciesSrc, 'EVOLVE') || {};
+      const REGION_ONLY = extractConst(battleCoreSrc, 'REGION_ONLY') || {};
+      const ITEM_DB = globalConst('ITEM_DB') || extractConst(itemsSrc, 'ITEM_DB') || {};
 
       const nameToDex = new Map();
       const dexToName = new Map();
@@ -575,14 +584,36 @@
       }
 
       function monDirectEvos(m) {
-        const out = [];
-        for (const e of (m?.evolution || [])) {
-          if (!e || e.to == null) continue;
+        // Start from the exact live payload for THIS owned Pokémon, then enrich
+        // matching targets with Worlddex's generated EVOLVE table. This gives
+        // Pokédex Tasks item / level / trade metadata without losing form-specific
+        // information present only on the owned Pokémon.
+        const byTarget = new Map();
+        const add = e => {
+          if (!e || e.to == null) return;
           const to = Number(e.to);
-          if (!Number.isFinite(to)) continue;
-          if (!out.some(x => Number(x.to) === to)) out.push({ ...e, to });
-        }
-        return out;
+          if (!Number.isFinite(to)) return;
+          const previous = byTarget.get(to) || { to };
+          const merged = { ...previous };
+          for (const [key, value] of Object.entries(e)) {
+            if (value != null || merged[key] == null) merged[key] = value;
+          }
+          merged.to = to;
+          byTarget.set(to, merged);
+        };
+
+        for (const e of (m?.evolution || [])) add(e);
+
+        const generated = EVOLVE[String(Number(m?.dex))] ?? EVOLVE[Number(m?.dex)];
+        const generatedList = Array.isArray(generated) ? generated : generated ? [generated] : [];
+        generatedList.forEach(add);
+
+        try {
+          if (BC?.evolutionsOf) (BC.evolutionsOf(Number(m?.dex)) || []).forEach(add);
+        } catch {}
+
+        friendTargets(Number(m?.dex)).forEach(add);
+        return [...byTarget.values()];
       }
 
       function normalizeSexRequirement(v) {
@@ -621,10 +652,89 @@
         return null;
       }
 
+      const FORM_DEX_MIN = 10000;
+
+      function normalizeRegionKey(value) {
+        const s = String(value || '').trim().toLowerCase();
+        if (!s) return '';
+        if (s === 'galar' || s === 'galarian') return 'galar';
+        if (s === 'hisui' || s === 'hisuian') return 'hisui';
+        if (s === 'alola' || s === 'alolan') return 'alola';
+        return s;
+      }
+
+      function regionalBranchRequirement(e) {
+        if (!e || e.to == null) return '';
+        return normalizeRegionKey(
+          REGION_ONLY[String(Number(e.to))] ?? REGION_ONLY[Number(e.to)] ?? ''
+        );
+      }
+
+      function evolutionSourceMatchesRegionalBranch(m, e) {
+        const need = regionalBranchRequirement(e);
+        if (!need) return true;
+
+        // Mirror Worlddex battle-core.js: older regional sources may still carry
+        // form='galar' / form='hisui', while newer regional species have their own
+        // 10xxx Dex number and usually no form field at all.
+        const sourceRegions = [m?.form, m?.region, m?.variant]
+          .map(normalizeRegionKey)
+          .filter(Boolean);
+        if (sourceRegions.includes(need)) return true;
+        return Number(m?.dex) >= FORM_DEX_MIN;
+      }
+
       function evolutionAllowsMon(m, e) {
         const req = evolutionSexRequirement(e);
-        if (!req) return true;
-        return String(m?.gender || '').toLowerCase() === req;
+        if (req && String(m?.gender || '').toLowerCase() !== req) return false;
+        return evolutionSourceMatchesRegionalBranch(m, e);
+      }
+
+      function titleCaseSlug(value) {
+        return String(value || '')
+          .replace(/[-_]+/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+      }
+
+      function evolutionItemLabel(item) {
+        const id = String(item || '').trim();
+        if (!id) return '';
+        return String(ITEM_DB?.[id]?.n || titleCaseSlug(id));
+      }
+
+      function regionalSourceLabel(region) {
+        if (region === 'galar') return 'Galarian form';
+        if (region === 'hisui') return 'Hisuian form';
+        if (region === 'alola') return 'Alolan form';
+        return region ? `${titleCaseSlug(region)} form` : '';
+      }
+
+      function evolutionRequirementParts(m, e) {
+        if (!e || typeof e !== 'object') return [];
+        const parts = [];
+        const item = String(e.item || '').trim();
+        if (item) parts.push(evolutionItemLabel(item));
+
+        const level = Number(e.lv ?? e.level);
+        if (Number.isFinite(level) && level > 0) parts.push(`Lv.${level}`);
+        if (e.trade) parts.push('Trade');
+        if (e.friendship) parts.push('Friendship 220+');
+
+        const sexReq = evolutionSexRequirement(e);
+        if (sexReq) parts.push(sexReq === 'f' ? '♀ female' : '♂ male');
+
+        const regionalSource = regionalBranchRequirement(e);
+        if (regionalSource && Number(m?.dex) < FORM_DEX_MIN) {
+          parts.push(regionalSourceLabel(regionalSource));
+        }
+
+        // Confirmed Worlddex behavior: Island Shard branches are performed in
+        // Alola. Ancient Shard is confirmed to create Hisuian evolutions, but a
+        // physical Hisui-location requirement has NOT been confirmed, so we do
+        // not invent one here.
+        if (item === 'island-shard') parts.push('Alola region');
+
+        return [...new Set(parts.filter(Boolean))];
       }
 
       function dexEvolutionMissing(m) {
@@ -770,7 +880,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.18.5
+      // FAMILY / BREEDING DECISIONS v1.18.6
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1414,6 +1524,7 @@
 
           const evoRecord = monDirectEvos(best).find(e => Number(e.to) === Number(target));
           const sexReq = evolutionSexRequirement(evoRecord);
+          const requirementParts = evolutionRequirementParts(best, evoRecord);
 
           tasks.push({
             Type:'EVOLVE',
@@ -1426,9 +1537,11 @@
             Nature:best.nature || '',
             Ability:best.ability || '',
             RequiredSex:sexReq || '',
-            Note:
-              `Evolve ${labelMon(best)} into uncaught ${dexToName.get(target) || '#' + target}` +
-              (sexReq ? ` · requires ${sexReq === 'f' ? '♀ female' : '♂ male'}` : '')
+            Item:String(evoRecord?.item || ''),
+            Level:Number(evoRecord?.lv ?? evoRecord?.level) || 0,
+            Trade:!!evoRecord?.trade,
+            Requirements:requirementParts.join(' · ') || 'No special requirement',
+            Note:`Evolve ${labelMon(best)} into uncaught ${dexToName.get(target) || '#' + target}`
           });
         }
 
@@ -1746,7 +1859,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.18.5 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.6 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -1951,7 +2064,7 @@ No Pokémon will be moved or released.`)) return;
 
 
       // ─────────────────────────────────────────────────────────────
-      // BREED PLANNER v1.18.5
+      // BREED PLANNER v1.18.6
       // Goal-first planner: choose the Pokémon you want, then rank legal pairs
       // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
       // preference because Worlddex warns that different species produce Eggs
@@ -3110,7 +3223,7 @@ No Pokémon will be moved or released.`)) return;
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.18.5</b>
+              <b>Worlddex Box Manager v1.18.6</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
@@ -3402,11 +3515,12 @@ No Pokémon will be moved or released.`)) return;
         if (r) r.textContent = String(releasedIds.size);
         if (e) e.textContent = String(releaseErrors.size);
         const activeCount=mons.filter(m=>!releasedIds.has(Number(m.id))).length;
-        const previewTotal=document.getElementById('wd-clean-preview-total'), previewKeep=document.getElementById('wd-clean-preview-keep'), previewCandidates=document.getElementById('wd-clean-preview-candidates');
+        const previewTotal=document.getElementById('wd-clean-preview-total'), previewKeep=document.getElementById('wd-clean-preview-keep'), previewCandidates=document.getElementById('wd-clean-preview-candidates'), previewLiving=document.getElementById('wd-clean-preview-living');
         if(previewTotal) previewTotal.textContent=String(activeCount);
         const liveCandidateCount=candidates.filter(r=>!releasedIds.has(Number(r.ID))).length;
         if(previewKeep) previewKeep.textContent=String(Math.max(0,activeCount-liveCandidateCount));
         if(previewCandidates) previewCandidates.textContent=String(liveCandidateCount);
+        if(previewLiving) previewLiving.textContent=String(livingDexCore.ids.size);
         managerUpdateNav?.();
 
         const btn = document.getElementById('wd-cleaner-release-btn');
@@ -3850,7 +3964,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.18.5) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.6) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -4083,11 +4197,12 @@ No Pokémon will be moved or released.`)) return;
         panel.innerHTML=`
           <div class="wdd-head"><div><b>Pokédex Tasks</b><small style="display:block;color:#9ba9bc">Pokémon you still need to breed or evolve to complete your collection.</small></div><div class="sp"></div><button id="wd-dex-refresh">Reload</button><button id="wd-dex-back">Back</button><button id="wd-dex-close">×</button></div>
           <div class="wdd-note">This list is generated from the Pokédex entries you are still missing.
-            For <b>EVOLVE</b>, the manager keeps one Pokémon that can become the missing entry.
+            For <b>EVOLVE</b>, the manager keeps one Pokémon that can become the missing entry and shows known item, level, trade and regional-form requirements.
+            Confirmed regional mechanics such as <b>Island Shard</b>, <b>Ancient Shard</b> and Galar evolution items are read from Worlddex's own evolution data.
             For <b>BREED</b>, it keeps a compatible female and male whenever possible.
             Once you obtain the missing Pokémon, press <b>Reload</b> and the completed task disappears automatically.</div>
-          <div class="wdd-wrap"><table><thead><tr><th>Action</th><th>Missing Pokémon</th><th>Use this Pokémon</th><th>Nature / Ability</th><th>What to do</th></tr></thead><tbody>
-            ${tasks.length ? tasks.map(t=>`<tr><td><span class="tag">${escHtml(t.Type)}</span>${t.PairStatus && t.Type==='BREED' ? `<small>${escHtml(t.PairStatus)}</small>` : ''}</td><td><b>#${t.MissingDex} ${escHtml(t.Missing)}</b></td><td><b>${escHtml(t.UseLabel || `#${t.UseID} ${t.Use}`)}</b></td><td>${escHtml(t.Nature)}<small>${escHtml(t.Ability)}</small></td><td>${escHtml(t.Note)}</td></tr>`).join('') : '<tr><td colspan="5" style="padding:22px;text-align:center;color:#8e9caf">No Pokédex breeding or evolution tasks right now.</td></tr>'}
+          <div class="wdd-wrap"><table><thead><tr><th>Action</th><th>Missing Pokémon</th><th>Use this Pokémon</th><th>Nature / Ability</th><th>Requirements</th><th>What to do</th></tr></thead><tbody>
+            ${tasks.length ? tasks.map(t=>`<tr><td><span class="tag">${escHtml(t.Type)}</span>${t.PairStatus && t.Type==='BREED' ? `<small>${escHtml(t.PairStatus)}</small>` : ''}</td><td><b>#${t.MissingDex} ${escHtml(t.Missing)}</b></td><td><b>${escHtml(t.UseLabel || `#${t.UseID} ${t.Use}`)}</b></td><td>${escHtml(t.Nature)}<small>${escHtml(t.Ability)}</small></td><td>${escHtml(t.Requirements || '—')}</td><td>${escHtml(t.Note)}</td></tr>`).join('') : '<tr><td colspan="6" style="padding:22px;text-align:center;color:#8e9caf">No Pokédex breeding or evolution tasks right now.</td></tr>'}
           </tbody></table></div>`;
         managerAttachView(panel, '.wdd-head');
 
@@ -4097,7 +4212,7 @@ No Pokémon will be moved or released.`)) return;
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.18.5
+      // BOX ORGANIZER v1.18.6
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -6412,7 +6527,7 @@ No Pokémon will be moved or released.`)) return;
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.18.5] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.18.6] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -6650,7 +6765,7 @@ No Pokémon will be moved or released.`)) return;
             border-radius:7px;
             padding:7px 9px;
           }
-          #wd-box-cleaner-v13 .wdcl-preview {display:grid;grid-template-columns:repeat(3,minmax(130px,1fr));gap:8px;padding:9px 12px;border-bottom:1px solid #2d3849;}
+          #wd-box-cleaner-v13 .wdcl-preview {display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;padding:9px 12px;border-bottom:1px solid #2d3849;}
           #wd-box-cleaner-v13 .wdcl-card {background:#171f2b;border:1px solid #2d3849;border-radius:8px;padding:8px 10px;}
           #wd-box-cleaner-v13 .wdcl-card small{display:block;color:#8fa0b5} #wd-box-cleaner-v13 .wdcl-card b{display:block;margin-top:2px;font-size:16px;color:#fff}
           #wd-box-cleaner-v13 .wdcl-tablewrap {
@@ -6769,7 +6884,7 @@ No Pokémon will be moved or released.`)) return;
               <button id="wd-cleaner-export">Export list</button>
               <button id="wd-cleaner-release-btn">RELEASE SELECTED (${selectedCount()})</button>
             </div>
-            <div class="wdcl-preview"><div class="wdcl-card"><small>Pokémon checked</small><b id="wd-clean-preview-total">0</b></div><div class="wdcl-card"><small>Safe to keep</small><b id="wd-clean-preview-keep">0</b></div><div class="wdcl-card"><small>Cleanup candidates</small><b id="wd-clean-preview-candidates">0</b></div></div>
+            <div class="wdcl-preview"><div class="wdcl-card"><small>Pokémon checked</small><b id="wd-clean-preview-total">0</b></div><div class="wdcl-card"><small>Safe to keep</small><b id="wd-clean-preview-keep">0</b></div><div class="wdcl-card"><small>Living Dex protected</small><b id="wd-clean-preview-living">0</b></div><div class="wdcl-card"><small>Cleanup candidates</small><b id="wd-clean-preview-candidates">0</b></div></div>
             <div class="wdcl-tablewrap">
               <table>
                 <thead>
@@ -6787,7 +6902,7 @@ No Pokémon will be moved or released.`)) return;
               </table>
             </div>
             <div class="wdcl-foot">
-              <div class="wdcl-note"><b>Nothing is removed automatically.</b> The list above is only a preview. You choose which Pokémon to remove and confirm the action before it starts. Protected Pokémon — including nicknamed Pokémon, favourites, trained Pokémon, breeding needs and Pokédex needs — are kept out of the cleanup list. High-IV Pokémon are normally protected too; <b>DONE</b> families compact redundant ordinary 70–89.99% copies, while <b>90%+ IV and every 4×31+ Pokémon remain hard-protected</b> for breeder / market value. If your PC changes while this window is open, press <b>Reload</b> before removing anything.</div>
+              <div class="wdcl-note"><b>Nothing is removed automatically.</b> The list above is only a preview. You choose which Pokémon to remove and confirm the action before it starts. <b>Living Dex protection keeps at least one copy of every owned Pokédex species/form.</b> Protected Pokémon — including nicknamed Pokémon, favourites, trained Pokémon, breeding needs and Pokédex needs — are kept out of the cleanup list. High-IV Pokémon are normally protected too; <b>DONE</b> families compact redundant ordinary 70–89.99% copies, while <b>90%+ IV and every 4×31+ Pokémon remain hard-protected</b> for breeder / market value. If your PC changes while this window is open, press <b>Reload</b> before removing anything.</div>
               <div id="wd-cleaner-log"></div>
             </div>
           </div>
@@ -6868,6 +6983,7 @@ No Pokémon will be moved or released.`)) return;
             Missing:`#${t.MissingDex} ${t.Missing}`,
             Parents:t.UseLabel || `#${t.UseID} ${t.Use}`,
             PairStatus:t.PairStatus || '',
+            Requirements:t.Requirements || '',
             Note:t.Note
           }));
           console.table(out);
@@ -6994,7 +7110,7 @@ No Pokémon will be moved or released.`)) return;
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.18.5] reload failed', err);
+      console.error('[Worlddex Box Manager v1.18.6] reload failed', err);
       __wdManagerShowLauncher();
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
