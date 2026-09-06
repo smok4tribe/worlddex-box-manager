@@ -1,0 +1,51 @@
+name: Apply Box Manager v1.18.6 test
+
+on:
+  push:
+    branches:
+      - box-v1-18-6-regional-dex
+    paths:
+      - ".github/patch_v1186.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: box-v1-18-6-regional-dex
+          fetch-depth: 0
+
+      - name: Apply reviewed v1.18.6 patch
+        run: python .github/patch_v1186.py
+
+      - name: Validate complete JavaScript and safety markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check box-manager.js
+          grep -Fq "BOX MANAGER v1.18.6" box-manager.js
+          grep -Fq "NO AUTOMATIC RELEASES — release only from review panel after double confirmation" box-manager.js
+          grep -Fq "doneMarketHardIVPct: 90" box-manager.js
+          grep -Fq "protectFourPerfectIVsHard: true" box-manager.js
+          grep -Fq "const REGION_ONLY" box-manager.js
+          grep -Fq "island-shard" box-manager.js
+          grep -Fq "ancient-shard" box-manager.js
+          grep -Fq "galarica-cuff" box-manager.js
+          grep -Fq "Living Dex protected" box-manager.js
+          grep -Fq "Alola region" box-manager.js
+
+      - name: Commit only intended test files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "smok4tribe"
+          git config user.email "57266150+smok4tribe@users.noreply.github.com"
+          git rm -f .github/patch_v1186.py .github/workflows/apply-v1186-test.yml
+          git add box-manager.js README.md CHANGELOG.md .github/workflows/build.yml
+          git diff --cached --check
+          git commit -m "Worlddex Box Manager v1.18.6 test: regional Dex tasks"
+          git push origin HEAD:box-v1-18-6-regional-dex
