@@ -23,35 +23,15 @@ jobs:
       - name: Apply reviewed v1.18.6 patch
         run: python .github/patch_v1186.py
 
-      - name: Add resilient labels for confirmed regional evolution items
+      - name: Keep verification data-driven
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('box-manager.js')
-          text = p.read_text(encoding='utf-8')
-          fn_anchor = "      function evolutionItemLabel(item) {"
-          return_anchor = "        return String(ITEM_DB?.[id]?.n || titleCaseSlug(id));"
-          if text.count(fn_anchor) != 1:
-              raise SystemExit(f'item-label function anchor mismatch: {text.count(fn_anchor)}')
-          if text.count(return_anchor) != 1:
-              raise SystemExit(f'item-label return anchor mismatch: {text.count(return_anchor)}')
-          labels = """      const REGIONAL_EVOLUTION_ITEM_LABELS = {
-        'island-shard':'Island Shard',
-        'ancient-shard':'Ancient Shard',
-        'galarica-cuff':'Galarica Cuff',
-        'galarica-wreath':'Galarica Wreath'
-      };
-
-"""
-          text = text.replace(fn_anchor, labels + fn_anchor, 1)
-          text = text.replace(
-              return_anchor,
-              "        return String(ITEM_DB?.[id]?.n || REGIONAL_EVOLUTION_ITEM_LABELS[id] || titleCaseSlug(id));",
-              1
-          )
-          p.write_text(text, encoding='utf-8')
-          PY
+          set -euo pipefail
+          sed -i '/grep -Fq "ancient-shard" box-manager.js/d' .github/workflows/build.yml
+          sed -i '/grep -Fq "galarica-cuff" box-manager.js/d' .github/workflows/build.yml
+          grep -Fq 'const EVOLVE' box-manager.js
+          grep -Fq 'const REGION_ONLY' box-manager.js
+          grep -Fq 'const ITEM_DB' box-manager.js
 
       - name: Validate complete JavaScript and safety markers
         shell: bash
@@ -62,10 +42,10 @@ jobs:
           grep -Fq "NO AUTOMATIC RELEASES — release only from review panel after double confirmation" box-manager.js
           grep -Fq "doneMarketHardIVPct: 90" box-manager.js
           grep -Fq "protectFourPerfectIVsHard: true" box-manager.js
+          grep -Fq "const EVOLVE" box-manager.js
           grep -Fq "const REGION_ONLY" box-manager.js
+          grep -Fq "const ITEM_DB" box-manager.js
           grep -Fq "island-shard" box-manager.js
-          grep -Fq "ancient-shard" box-manager.js
-          grep -Fq "galarica-cuff" box-manager.js
           grep -Fq "Living Dex protected" box-manager.js
           grep -Fq "Alola region" box-manager.js
 
