@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.18.6
+
+- Surfaced **Living Dex protection** directly in Clean Up: at least one copy of every owned Pokédex species/form remains protected, and the preview shows the protected Living Dex core count.
+- Pokédex **EVOLVE** tasks now enrich live Pokémon evolution data with Worlddex's own `species.js` metadata and display known item, level, trade, sex and regional-source requirements.
+- Added confirmed **Island Shard** handling for Alolan Raichu, Alolan Exeggutor and Alolan Marowak, including the verified **Alola region** requirement.
+- Added confirmed **Ancient Shard** handling for Hisuian evolution branches without inventing an unverified Hisui-location requirement.
+- Added Galar evolution support including **Galarica Cuff**, **Galarica Wreath**, Ice Stone branches and the client's `REGION_ONLY` source-form eligibility rules.
+- Regional-only branches now mirror Worlddex's `form` / 10xxx-Dex source checks, preventing ordinary Meowth, Corsola, Yamask, Linoone and similar base forms from being falsely protected for Galar-only evolutions.
+- Cleaner release safeguards, premium-IV protections, Organizer capacity/interlocks and breeding-ranking behavior are unchanged.
+
 ## v1.18.5
 
 - The standalone **Box Manager** launcher is now draggable and remembers its screen position; click-vs-drag uses a movement threshold so repositioning does not accidentally open the panel.

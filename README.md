@@ -4,7 +4,7 @@ Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
 It adds an on-demand floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
 
-> **Current version: v1.18.5**
+> **Current version: v1.18.6**
 
 ## What it can do
 
@@ -40,6 +40,7 @@ Reviews your PC and suggests duplicate Pokémon that may be safe to remove.
 
 The cleaner protects important copies, including:
 
+- at least one **Living Dex** copy of every owned Pokédex species/form;
 - nicknamed Pokémon;
 - favourites;
 - trained Pokémon;
@@ -117,8 +118,10 @@ These choices help the Cleaner know which breeding stock still matters. Breeding
 
 Shows Pokémon that you still need to obtain through breeding or evolution.
 
-- **EVOLVE** keeps one suitable Pokémon for the missing evolution.
-- **BREED** now searches owned Pokémon across the PC, team and Nursery and chooses a legal donor with this practical priority: **same species → compatible shared Egg Group → Ditto fallback**.
+- **EVOLVE** keeps one suitable Pokémon for the missing evolution and shows known level, item, trade, sex and regional-form requirements.
+- Regional evolution data is read from Worlddex itself, including confirmed **Island Shard** Alolan branches, **Ancient Shard** Hisuian branches, Galarica Cuff/Wreath, and Galar-only source-form branches.
+- Island Shard tasks explicitly show the confirmed **Alola region** requirement; Ancient Shard is identified as a Hisuian evolution item without inventing an unconfirmed Hisui-location requirement.
+- **BREED** searches owned Pokémon across the PC, team and Nursery and chooses a legal donor with this practical priority: **same species → compatible shared Egg Group → Ditto fallback**.
 - Cross-family Egg-Group donors selected by an active Pokédex task are protected from Clean Up while the task is still needed.
 
 Completed tasks disappear after you reload the manager.
@@ -207,16 +210,16 @@ Even with these safeguards, this is an unofficial community tool. Review the cle
 
 ## Transparency
 
-The current v1.18.5 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
+The current v1.18.6 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
 
 What the script does:
 
-- reads Worlddex data from same-origin endpoints: `/api/box`, `/api/state`, `/api/nursery`, `/js/data.js` and `/js/pc.js`;
+- reads Worlddex data from same-origin endpoints: `/api/box`, `/api/state`, `/api/nursery`, `/js/data.js`, `/js/pc.js`, `/js/species.js`, `/js/battle-core.js` and `/js/items.js`;
 - uses the currently logged-in Worlddex session through normal `same-origin` browser requests;
 - writes only to Worlddex endpoints used for the features you explicitly run: `/api/box/release`, `/api/box/move` and `/api/pc/box-name`;
 - stores Box Manager preferences and project state locally in `localStorage`, including breeding / special retention choices, Breed Planner projects, Organizer settings, the active view and panel position.
 
-What is not present in v1.18.5:
+What is not present in v1.18.6:
 
 - no third-party URLs or external API calls;
 - no analytics, tracking, ads, webhooks or telemetry;
@@ -226,7 +229,7 @@ What is not present in v1.18.5:
 
 One implementation detail worth disclosing: the script uses `window.eval` and a `Function(...)` fallback only to access or parse data constants from Worlddex's own same-origin JavaScript files. It does not use them to fetch or execute third-party code.
 
-The source is intentionally public and readable so anyone can inspect it or run an independent code review before using it. The SHA-256 check in GitHub Actions verifies that the published `box-manager.js` is the exact reviewed build; it is an integrity check, not a security certification.
+The source is intentionally public and readable so anyone can inspect it or run an independent code review before using it. GitHub Actions syntax-checks the published `box-manager.js` and verifies release-safety / feature markers; this is an integrity sanity check, not a security certification.
 
 ## Status
 
@@ -236,8 +239,4 @@ Worlddex updates can require changes to this tool.
 
 ## Verification
 
-The repository verifies `box-manager.js` with a JavaScript syntax check and an exact SHA-256 check.
-
-Current v1.18.5 SHA-256:
-
-`Updated by the release workflow after final review.`
+The repository verifies `box-manager.js` with a JavaScript syntax check plus release-safety and current-feature marker checks.
