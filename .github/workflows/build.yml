@@ -18,19 +18,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Box Manager v1.18.6
+      - name: Verify Box Manager v1.18.7
         shell: bash
         run: |
           set -euo pipefail
 
           node --check box-manager.js
 
-          grep -Fq "BOX MANAGER v1.18.6" box-manager.js
+          grep -Fq "BOX MANAGER v1.18.7" box-manager.js
           grep -Fq "NO AUTOMATIC RELEASES — release only from review panel after double confirmation" box-manager.js
           grep -Fq "doneMarketHardIVPct: 90" box-manager.js
           grep -Fq "protectFourPerfectIVsHard: true" box-manager.js
           grep -Fq "wd-organizer-box-direction" box-manager.js
           grep -Fq "BREED_PLANNER_FORM_KEY" box-manager.js
+          grep -Fq "BREED_PLANNER_LIVE_REFRESH_MS" box-manager.js
+          grep -Fq "rollProbability" box-manager.js
           grep -Fq "__WD_MANAGER_LAUNCHER_POSITION_KEY" box-manager.js
           grep -Fq "keepSynchronizeTogether:false" box-manager.js
           grep -Fq "const EVOLVE" box-manager.js
@@ -40,4 +42,4 @@ jobs:
           grep -Fq "Living Dex protected" box-manager.js
           grep -Fq "Alola region" box-manager.js
 
-          echo "Box Manager v1.18.6 syntax, release-safety, Living Dex and regional Dex-task markers verified."
+          echo "Box Manager v1.18.7 syntax, release-safety, live Breed Planner rerank, Living Dex and regional Dex-task markers verified."
