@@ -1,0 +1,95 @@
+name: Apply Box Manager v1.18.7 Breed Planner
+
+on:
+  push:
+    branches:
+      - box-v1-18-7-breed-planner-rerank
+    paths:
+      - "patch_breed_planner_v1_18_7.py"
+      - ".github/workflows/apply-v1-18-7-breed-planner.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply Breed Planner v1.18.7 patch
+        run: python3 patch_breed_planner_v1_18_7.py
+
+      - name: Validate JavaScript and safety markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check box-manager.js
+          git diff --check
+          grep -Fq "BOX MANAGER v1.18.7" box-manager.js
+          grep -Fq "BREED_PLANNER_LIVE_REFRESH_MS = 4000" box-manager.js
+          grep -Fq "rollProbability" box-manager.js
+          grep -Fq "sharedPerfect ? 2 : 19" box-manager.js
+          grep -Fq "doneMarketHardIVPct: 90" box-manager.js
+          grep -Fq "protectFourPerfectIVsHard: true" box-manager.js
+          ! grep -Fq "if (currentNurseryPair) score += 24" box-manager.js
+
+      - name: Regression check inheritance ranking
+        shell: bash
+        run: |
+          node <<'NODE'
+          const STATS=['hp','atk','def','spa','spd','spe'];
+          const power={hp:'power-weight',atk:'power-bracer',def:'power-belt',spa:'power-lens',spd:'power-band',spe:'power-anklet'};
+          const powerStat=item=>Object.entries(power).find(([,v])=>v===item)?.[0]||null;
+          function combos(items, choose){
+            const out=[]; const a=[...items];
+            const walk=(start,pick)=>{ if(pick.length===choose){out.push([...pick]);return;} for(let i=start;i<=a.length-(choose-pick.length);i++){pick.push(a[i]);walk(i+1,pick);pick.pop();}};
+            if(choose===0)return [[]]; if(choose<0||choose>a.length)return []; walk(0,[]); return out;
+          }
+          function estimate(a,b,setup,required){
+            const inheritedCount=(setup.a==='destiny-knot'||setup.b==='destiny-knot')?5:3;
+            const aPower=powerStat(setup.a), bPower=powerStat(setup.b);
+            const forcedStat=aPower||bPower||null;
+            const forcedHolder=aPower?a:(bPower?b:null);
+            const selectable=STATS.filter(s=>s!==forcedStat);
+            const randomInherited=Math.max(0,Math.min(selectable.length,inheritedCount-(forcedStat?1:0)));
+            const subsets=combos(selectable,randomInherited);
+            let total=0;
+            for(const subset of subsets){
+              const inherited=new Set(subset); if(forcedStat) inherited.add(forcedStat);
+              let p=1;
+              for(const stat of required){
+                if(forcedStat===stat) p*=forcedHolder[stat]===31?1:0;
+                else if(inherited.has(stat)) p*=((a[stat]===31?1:0)+(b[stat]===31?1:0))/2;
+                else p*=1/32;
+              }
+              total+=p/subsets.length;
+            }
+            return total;
+          }
+          const annihilape={hp:31,atk:25,def:28,spa:29,spd:31,spe:31};
+          const espeon={hp:31,atk:31,def:31,spa:29,spd:31,spe:31};
+          const target=['hp','atk','def','spd','spe'];
+          const redundant=estimate(annihilape,espeon,{a:'power-weight',b:'destiny-knot'},target);
+          const useful=estimate(annihilape,espeon,{a:'destiny-knot',b:'power-bracer'},target);
+          if(!(useful>redundant)) throw new Error(`Expected useful forced Atk ${useful} > shared HP ${redundant}`);
+
+          const oldMother={hp:31,atk:25,def:28,spa:29,spd:31,spe:20};
+          const newMother={hp:31,atk:31,def:28,spa:29,spd:31,spe:31};
+          const setups=[];
+          for(const stat of target){setups.push({a:'destiny-knot',b:power[stat]},{a:power[stat],b:'destiny-knot'});}
+          const best=(a,b)=>Math.max(...setups.map(s=>estimate(a,b,s,target)));
+          const oldP=best(oldMother,espeon), newP=best(newMother,espeon);
+          if(!(newP>oldP)) throw new Error(`Expected 4x31 newborn ${newP} > weaker breeder ${oldP}`);
+          console.log({redundant,useful,oldP,newP});
+          NODE
+
+      - name: Commit patched product files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Matteo Cordua"
+          git config user.email "57266150+smok4tribe@users.noreply.github.com"
+          git add box-manager.js README.md CHANGELOG.md .github/workflows/build.yml
+          git commit -m "Box Manager v1.18.7: rerank breeding from live odds"
+          git push
