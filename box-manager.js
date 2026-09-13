@@ -155,6 +155,10 @@
   }
 
   function __wdManagerCleanupUI() {
+    if (window.__WD_BREED_PLANNER_WATCH) {
+      clearInterval(window.__WD_BREED_PLANNER_WATCH);
+      window.__WD_BREED_PLANNER_WATCH = null;
+    }
     [
       'wd-manager-shell-v110',
       'wd-box-cleaner-v13',
@@ -364,7 +368,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.18.6 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.7 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -880,7 +884,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.18.6
+      // FAMILY / BREEDING DECISIONS v1.18.7
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1859,7 +1863,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.18.6 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.7 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -2064,7 +2068,7 @@ No Pokémon will be moved or released.`)) return;
 
 
       // ─────────────────────────────────────────────────────────────
-      // BREED PLANNER v1.18.6
+      // BREED PLANNER v1.18.7
       // Goal-first planner: choose the Pokémon you want, then rank legal pairs
       // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
       // preference because Worlddex warns that different species produce Eggs
@@ -2230,11 +2234,15 @@ No Pokémon will be moved or released.`)) return;
         const hasKnot = setup.a === 'destiny-knot' || setup.b === 'destiny-knot';
         if (hasKnot) score += 18 + Math.max(0, union.length - 2) * 4;
 
-        for (const [holder,item] of [[a,setup.a],[b,setup.b]]) {
+        for (const [holder,item,partner] of [[a,setup.a,b],[b,setup.b,a]]) {
           const stat = breedPlannerPowerStat(item);
           if (!stat) continue;
-          if (required.includes(stat) && Number(holder?.ivs?.[stat]) === 31) score += 19;
-          else score -= 4;
+          if (required.includes(stat) && Number(holder?.ivs?.[stat]) === 31) {
+            // A forced 31 that only this parent supplies is a much stronger tie-break
+            // than forcing a stat already guaranteed by either inherited parent.
+            const sharedPerfect = Number(partner?.ivs?.[stat]) === 31;
+            score += sharedPerfect ? 2 : 19;
+          } else score -= 4;
         }
 
         let natureText = 'Any nature';
@@ -2262,33 +2270,60 @@ No Pokémon will be moved or released.`)) return;
           let best = null;
           for (const setup of setups) {
             const ss = breedPlannerScoreSetup(a,b,setup,desired);
-            let score = ss.score + ability.score;
+            const roll = breedPlannerEstimatedRoll(
+              a,b,setup,ss.union,desired,desired.nature !== 'Any'
+            );
+            const rollProbability = Number(roll?.probability || 0);
+            const setupCandidate = {
+              ...ss,
+              setup,
+              setupScore:ss.score,
+              rollProbability
+            };
 
-            // Efficiency preference. This is intentionally not presented as an
-            // exact speed multiplier until Worlddex's nursery formula is confirmed.
-            score += sameSpecies ? 58 : -12;
-            if (currentNurseryPair) score += 24;
-            else {
-              if (ownedLocation(a) === 'NURSERY') score -= 18;
-              if (ownedLocation(b) === 'NURSERY') score -= 18;
+            // Item assignment is chosen by the actual estimated checkpoint roll first.
+            // Heuristic scoring only breaks genuine probability ties.
+            if (!best ||
+                rollProbability > best.rollProbability + 1e-12 ||
+                (Math.abs(rollProbability-best.rollProbability) <= 1e-12 && ss.score > best.setupScore)) {
+              best = setupCandidate;
             }
-            if (ownedLocation(a) === 'TEAM') score -= 3;
-            if (ownedLocation(b) === 'TEAM') score -= 3;
-            score += (ivSum(a)+ivSum(b))/120;
-
-            if (!best || score > best.score) best = { ...ss, setup, score };
           }
           if (!best) continue;
+
+          let score = best.setupScore + ability.score;
+
+          // Same-species breeding remains preferred because Worlddex produces Eggs
+          // faster there. Per-Egg inheritance odds now contribute explicitly, so a
+          // materially better newly-hatched breeder can replace a weaker old parent.
+          score += sameSpecies ? 58 : -12;
+          score += best.rollProbability > 0
+            ? Math.log2(best.rollProbability) * 32
+            : -10000;
+
+          // Nursery presence is informational, not a ranking lock. Keeping the old
+          // pair in the Nursery must never outweigh a better offspring's breeding odds.
+          if (ownedLocation(a) === 'TEAM') score -= 3;
+          if (ownedLocation(b) === 'TEAM') score -= 3;
+          score += (ivSum(a)+ivSum(b))/120;
+
           results.push({
             target,
             a,b,
             sameSpecies,
             currentNurseryPair,
             abilityText:ability.text,
-            ...best
+            ...best,
+            score
           });
         }
-        return results.sort((x,y) => y.score-x.score || y.union.length-x.union.length || breederScore(y.a)+breederScore(y.b)-breederScore(x.a)-breederScore(x.b));
+        return results.sort((x,y) =>
+          y.score-x.score ||
+          y.rollProbability-x.rollProbability ||
+          y.union.length-x.union.length ||
+          breederScore(y.a)+breederScore(y.b)-breederScore(x.a)-breederScore(x.b) ||
+          Number(y.currentNurseryPair)-Number(x.currentNurseryPair)
+        );
       }
 
       function breedPlannerCombinations(items, choose) {
@@ -2405,7 +2440,16 @@ No Pokémon will be moved or released.`)) return;
         let best = null;
         for (const setup of breedPlannerItemSetups(a,b,desired.nature,desired.requiredStats)) {
           const score = breedPlannerScoreSetup(a,b,setup,desired);
-          if (!best || score.score > best.score) best = { ...score, setup };
+          const roll = breedPlannerEstimatedRoll(
+            a,b,setup,score.union,desired,desired.nature !== 'Any'
+          );
+          const rollProbability = Number(roll?.probability || 0);
+          const candidate = { ...score, setup, setupScore:score.score, rollProbability };
+          if (!best ||
+              rollProbability > best.rollProbability + 1e-12 ||
+              (Math.abs(rollProbability-best.rollProbability) <= 1e-12 && score.score > best.setupScore)) {
+            best = candidate;
+          }
         }
         return best;
       }
@@ -2617,7 +2661,7 @@ No Pokémon will be moved or released.`)) return;
         }).join('');
         const blocker = path.blocker ? `<div class="wdbp-path-blocker"><b>Planner note:</b> ${escHtml(path.blocker)}.</div>` : '';
         return `<section class="wdbp-path">
-          <div class="wdbp-path-head"><div><b>FULL BREEDING PATH</b><small>Each step tells you which offspring profile to keep. Reload after hatching and the planner will recalculate from your new owned Pokémon.</small></div>${status}</div>
+          <div class="wdbp-path-head"><div><b>FULL BREEDING PATH</b><small>Each step tells you which offspring profile to keep. While this view is open, Box + Nursery changes are detected automatically and the planner refreshes from live data.</small></div>${status}</div>
           ${steps}${blocker}
         </section>`;
       }
@@ -2804,6 +2848,70 @@ No Pokémon will be moved or released.`)) return;
         });
       }
 
+      const BREED_PLANNER_LIVE_REFRESH_MS = 4000;
+
+      function breedPlannerInventorySignature(boxBody, nurseryBody) {
+        const rows=[];
+        const push=(where,m)=>{
+          if (m?.id == null) return;
+          rows.push([
+            where,
+            Number(m.id),
+            Number(m.dex),
+            String(m.gender || ''),
+            String(m.nature || ''),
+            String(m.ability || ''),
+            ...STATS.map(stat => Number(m?.ivs?.[stat] || 0))
+          ].join(':'));
+        };
+        for (const m of (Array.isArray(boxBody?.mons) ? boxBody.mons : [])) push('B',m);
+        for (const m of (Array.isArray(nurseryBody?.held) ? nurseryBody.held : [])) push('N',m);
+        return rows.sort().join('|');
+      }
+
+      function breedPlannerCurrentInventorySignature() {
+        return breedPlannerInventorySignature({ mons }, { held:nurseryHeld });
+      }
+
+      async function breedPlannerRefreshLiveData(reason='manual') {
+        saveBreedPlannerFormState();
+        const calculated=document.getElementById('wd-breed-calculated');
+        if(calculated) calculated.textContent = reason === 'manual'
+          ? 'Reloading current Box + Team + Nursery…'
+          : 'New hatch / inventory change detected · refreshing…';
+        return window.__WORLDDEX_BOX_MANAGER_REFRESH?.();
+      }
+
+      function breedPlannerStartLiveWatch() {
+        if (window.__WD_BREED_PLANNER_WATCH) clearInterval(window.__WD_BREED_PLANNER_WATCH);
+        let baseline=breedPlannerCurrentInventorySignature();
+        let checking=false;
+        window.__WD_BREED_PLANNER_WATCH=setInterval(async()=>{
+          if (checking) return;
+          if (!document.getElementById('wd-breed-planner-v116')) {
+            clearInterval(window.__WD_BREED_PLANNER_WATCH);
+            window.__WD_BREED_PLANNER_WATCH=null;
+            return;
+          }
+          checking=true;
+          try {
+            const [boxNow,nurseryNow]=await Promise.all([
+              getJSON('/api/box'),
+              getJSON('/api/nursery').catch(()=>({held:[]}))
+            ]);
+            const next=breedPlannerInventorySignature(boxNow,nurseryNow);
+            if (next !== baseline) {
+              baseline=next;
+              await breedPlannerRefreshLiveData('inventory-change');
+            }
+          } catch (err) {
+            console.warn('[Worlddex Box Manager v1.18.7] Breed Planner live refresh check failed', err);
+          } finally {
+            checking=false;
+          }
+        },BREED_PLANNER_LIVE_REFRESH_MS);
+      }
+
       function mountBreedPlannerPanel(familyKeyToOpen=null) {
         managerPrepareView('planner');
         document.getElementById('wd-breed-planner-v116')?.remove();
@@ -2893,7 +3001,7 @@ No Pokémon will be moved or released.`)) return;
         document.getElementById('wd-breed-nature').addEventListener('change',persistAndRender);
         document.getElementById('wd-breed-ability').addEventListener('change',persistAndRender);
         document.getElementById('wd-breed-same-only').addEventListener('change',persistAndRender);
-        document.getElementById('wd-breed-calculate').addEventListener('click',()=>{saveBreedPlannerFormState();updateAbilities();renderBreedPlannerResults();});
+        document.getElementById('wd-breed-calculate').addEventListener('click',()=>breedPlannerRefreshLiveData('manual'));
         document.querySelectorAll('[data-breed-iv]').forEach(el=>el.addEventListener('change',persistAndRender));
         document.querySelectorAll('[data-breed-preset]').forEach(el=>el.addEventListener('click',()=>breedPlannerApplyPreset(el.dataset.breedPreset,true)));
 
@@ -2909,6 +3017,7 @@ No Pokémon will be moved or released.`)) return;
         }
         updateAbilities();
         if(hasRememberedTarget) renderBreedPlannerResults();
+        breedPlannerStartLiveWatch();
       }
 
 
@@ -3223,7 +3332,7 @@ No Pokémon will be moved or released.`)) return;
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.18.6</b>
+              <b>Worlddex Box Manager v1.18.7</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
@@ -3964,7 +4073,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.18.6) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.7) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -4212,7 +4321,7 @@ No Pokémon will be moved or released.`)) return;
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.18.6
+      // BOX ORGANIZER v1.18.7
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -6527,7 +6636,7 @@ No Pokémon will be moved or released.`)) return;
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.18.6] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.18.7] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -7110,7 +7219,7 @@ No Pokémon will be moved or released.`)) return;
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.18.6] reload failed', err);
+      console.error('[Worlddex Box Manager v1.18.7] reload failed', err);
       __wdManagerShowLauncher();
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
