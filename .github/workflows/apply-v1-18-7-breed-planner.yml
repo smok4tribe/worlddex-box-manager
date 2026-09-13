@@ -90,6 +90,7 @@ jobs:
           set -euo pipefail
           git config user.name "Matteo Cordua"
           git config user.email "57266150+smok4tribe@users.noreply.github.com"
-          git add box-manager.js README.md CHANGELOG.md .github/workflows/build.yml
+          git checkout -- .github/workflows/build.yml
+          git add box-manager.js README.md CHANGELOG.md
           git commit -m "Box Manager v1.18.7: rerank breeding from live odds"
           git push
