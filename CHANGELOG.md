@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.18.7
+
+- Breed Planner now ranks held-item assignments by the estimated inheritance roll instead of flat Power Item bonuses, preventing redundant shared-31 Power Item recommendations when a better forced IV exists.
+- Pair ranking now incorporates estimated per-Egg checkpoint odds and no longer gives the current Nursery pair a ranking lock; materially stronger newly hatched breeders can replace weaker parents immediately.
+- **Recalculate best pair** now performs a full live Box + Team + Nursery reload instead of reusing the manager's old inventory snapshot.
+- While Breed Planner is open, Box + Nursery inventory is checked every 4 seconds; a hatch or breeder change triggers an automatic safe refresh while preserving the saved planner target and filters.
+- Cleaner release protections, the 90%+ / 4×31+ hard safeguards, and Organizer behavior are unchanged.
+
 ## v1.18.6
 
 - Surfaced **Living Dex protection** directly in Clean Up: at least one copy of every owned Pokédex species/form remains protected, and the preview shows the protected Living Dex core count.

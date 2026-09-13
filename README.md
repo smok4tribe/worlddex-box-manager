@@ -4,7 +4,7 @@ Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
 It adds an on-demand floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
 
-> **Current version: v1.18.6**
+> **Current version: v1.18.7**
 
 ## What it can do
 
@@ -92,7 +92,7 @@ It also displays an **Estimated roll** such as `≈ 1 in 300` for the requested 
 
 Same-species pairings are preferred for faster Egg production. Different-species pairings can still be suggested when their breeding value is strong enough, unless **Only same species** is enabled.
 
-The last planner target / filters are remembered locally. Reopening Breed Planner or using **Reload** recalculates recommendations from the current PC + team + Nursery instead of trusting an old pair. A green **Recalculate best pair** button is also available for an explicit fresh check.
+The last planner target / filters are remembered locally. While Breed Planner is open it watches Box + Nursery inventory changes and refreshes from live data when a hatch or breeder change appears. **Recalculate best pair** now performs a full live Box + Team + Nursery reload instead of re-ranking a stale snapshot. Pair and held-item ranking use the estimated inheritance roll so a materially better new offspring can replace an older breeder even when both pairs cover the same theoretical target IVs.
 
 A result can be saved directly as a Breeding Project.
 
@@ -210,7 +210,7 @@ Even with these safeguards, this is an unofficial community tool. Review the cle
 
 ## Transparency
 
-The current v1.18.6 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
+The current v1.18.7 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
 
 What the script does:
 
@@ -219,7 +219,7 @@ What the script does:
 - writes only to Worlddex endpoints used for the features you explicitly run: `/api/box/release`, `/api/box/move` and `/api/pc/box-name`;
 - stores Box Manager preferences and project state locally in `localStorage`, including breeding / special retention choices, Breed Planner projects, Organizer settings, the active view and panel position.
 
-What is not present in v1.18.6:
+What is not present in v1.18.7:
 
 - no third-party URLs or external API calls;
 - no analytics, tracking, ads, webhooks or telemetry;
