@@ -2933,6 +2933,18 @@ No Pokémon will be moved or released.`)) return;
       }
 
       async function breedPlannerRefreshLiveData(reason='manual') {
+        // Automatic inventory watching must never resurrect or expand a planner
+        // the player has closed, switched away from, or minimized. Keep the old
+        // baseline in those states so restoring the visible Planner can refresh
+        // on the next watch tick instead of silently accepting stale data.
+        if (reason !== 'manual') {
+          const shell=document.getElementById('wd-manager-shell-v110');
+          const planner=document.getElementById('wd-breed-planner-v116');
+          if (!shell || !planner || shell.dataset.view !== 'planner' || shell.classList.contains('wdm-minimized')) {
+            return false;
+          }
+        }
+
         saveBreedPlannerFormState();
         const calculated=document.getElementById('wd-breed-calculated');
         if(calculated) calculated.textContent = reason === 'manual'
@@ -2961,8 +2973,8 @@ No Pokémon will be moved or released.`)) return;
             ]);
             const next=breedPlannerInventorySignature(boxNow,stateNow,nurseryNow);
             if (next !== baseline) {
-              baseline=next;
-              await breedPlannerRefreshLiveData('inventory-change');
+              const refreshed=await breedPlannerRefreshLiveData('inventory-change');
+              if (refreshed !== false) baseline=next;
             }
           } catch (err) {
             console.warn('[Worlddex Box Manager v1.18.9] Breed Planner live refresh check failed', err);
