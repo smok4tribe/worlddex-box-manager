@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.18.9
+
+- Fixed Breed Planner ranking changing solely because a breeder was moved from the PC into the six-Pokémon main Team; Team location is now informational and no longer applies a ranking penalty.
+- Breed Planner live inventory watching now includes `/api/state` Team data alongside Box + Nursery, so Box ↔ Team breeder moves trigger the same safe automatic refresh as hatches and Nursery changes.
+- Added a permanent Team regression contract while preserving all v1.18.8 Cleaner safety invariants and breeding probability logic.
+
 ## v1.18.8
 
 - **Safety hardening:** Cleaner now revalidates a whole-PC safety snapshot before every irreversible release request, including after 429 backoff; keeper disappearance, new inventory, or safety-relevant property changes stop the batch.
