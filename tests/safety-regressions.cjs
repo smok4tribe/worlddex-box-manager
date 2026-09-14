@@ -10,7 +10,7 @@ function between(a, b) {
   return src.slice(i, j);
 }
 
-assert(src.includes('BOX MANAGER v1.18.9'));
+assert(src.includes('BOX MANAGER v1.19.0'));
 assert(src.includes('doneMarketHardIVPct: 90'));
 assert(src.includes('protectFourPerfectIVsHard: true'));
 assert(!src.includes("if (n === 'ralts' || n === 'abra')"));
@@ -60,4 +60,4 @@ assert(
   'cross-family donor interlock must not depend on donor family mode'
 );
 
-console.log('v1.18.9 safety regression contract passed');
+console.log('v1.19.0 safety regression contract passed');
