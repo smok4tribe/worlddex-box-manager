@@ -7,6 +7,14 @@ on:
       - main
     paths:
       - "box-manager.js"
+      - "tests/safety-regressions.cjs"
+      - ".github/workflows/build.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "box-manager.js"
+      - "tests/safety-regressions.cjs"
       - ".github/workflows/build.yml"
 
 permissions:
@@ -18,14 +26,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Box Manager v1.18.7
+      - name: Verify Box Manager v1.18.8
         shell: bash
         run: |
           set -euo pipefail
 
           node --check box-manager.js
+          node tests/safety-regressions.cjs
 
-          grep -Fq "BOX MANAGER v1.18.7" box-manager.js
+          grep -Fq "BOX MANAGER v1.18.8" box-manager.js
           grep -Fq "NO AUTOMATIC RELEASES — release only from review panel after double confirmation" box-manager.js
           grep -Fq "doneMarketHardIVPct: 90" box-manager.js
           grep -Fq "protectFourPerfectIVsHard: true" box-manager.js
@@ -42,4 +51,4 @@ jobs:
           grep -Fq "Living Dex protected" box-manager.js
           grep -Fq "Alola region" box-manager.js
 
-          echo "Box Manager v1.18.7 syntax, release-safety, live Breed Planner rerank, Living Dex and regional Dex-task markers verified."
+          echo "Box Manager v1.18.8 syntax and behavioral safety regressions verified."

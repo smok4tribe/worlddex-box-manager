@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.18.8
+
+- **Safety hardening:** Cleaner now revalidates a whole-PC safety snapshot before every irreversible release request, including after 429 backoff; keeper disappearance, new inventory, or safety-relevant property changes stop the batch.
+- Expanded live fingerprints to include EVs, level, friendship, favourite, Shiny/Shadow/Rainbow, nickname and held item in addition to identity/IV fields.
+- Required Egg Group metadata now fails closed at the release interlock instead of silently treating unavailable metadata as an empty ruleset.
+- Active cross-family Egg Group donors are protected by project demand even when the donor's own family is AUTO/DONE/NO BREED.
+- Fixed Cleaner interlock reason formatting for Set-backed breeder-core reasons.
+- Breeding Project auto-mode synchronization now runs before the initial Cleaner analysis, eliminating stale AUTO candidate rows after load.
+- Persisted family decisions survive when a family is temporarily absent from PC because all copies are in Team/Nursery; community defaults are neutral AUTO instead of source-hardcoded personal species choices.
+- Pokédex evolution tasks allocate distinct irreversible sources when alternatives exist and prefer not to consume the current Living Dex representative. Same-species donor tier now truly outranks cross-species/ Ditto quality as documented.
+- Fixed unrestricted multi-step Breed Planner virtual offspring incorrectly becoming Dex 0 when no explicit breed Dex is supplied.
+- Added permanent safety regression checks to CI while preserving `doneMarketHardIVPct: 90`, `protectFourPerfectIVsHard: true`, double confirmation and the no-auto-release invariant.
+
 ## v1.18.7
 
 - Breed Planner now ranks held-item assignments by the estimated inheritance roll instead of flat Power Item bonuses, preventing redundant shared-31 Power Item recommendations when a better forced IV exists.

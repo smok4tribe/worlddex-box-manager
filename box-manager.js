@@ -368,7 +368,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.18.7 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.8 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -376,7 +376,7 @@
       const [boxRes, stateRes, nurseryRes, dataSrc, pcSrc, speciesSrc, battleCoreSrc, itemsSrc] = await Promise.all([
         getJSON('/api/box'),
         getJSON('/api/state'),
-        getJSON('/api/nursery').catch(() => ({ held: [] })),
+        getJSON('/api/nursery').catch(err => ({ held: [], __wdUnavailable:true, __wdError:String(err?.message || err) })),
         getText('/js/data.js'),
         getText('/js/pc.js'),
         getText('/js/species.js').catch(() => ''),
@@ -389,7 +389,15 @@
       const caught = new Set(Object.keys(state.dexCaught || {}).map(Number));
       const seen = new Set(Object.keys(state.dexSeen || {}).map(Number));
 
-      const EGG_GROUP = globalConst('EGG_GROUP') || extractConst(dataSrc, 'EGG_GROUP') || {};
+      const EGG_GROUP_SOURCE = globalConst('EGG_GROUP') || extractConst(dataSrc, 'EGG_GROUP');
+      const EGG_GROUP = EGG_GROUP_SOURCE || {};
+      const CLEANER_SAFETY_METADATA_ISSUES = [];
+      if (nurseryRes?.__wdUnavailable) {
+        CLEANER_SAFETY_METADATA_ISSUES.push('NURSERY_UNAVAILABLE');
+      }
+      if (!EGG_GROUP_SOURCE || typeof EGG_GROUP_SOURCE !== 'object' || !Object.keys(EGG_GROUP_SOURCE).length) {
+        CLEANER_SAFETY_METADATA_ISSUES.push('EGG_GROUP_UNAVAILABLE');
+      }
       const DEX = globalConst('DEX') || extractConst(dataSrc, 'DEX') || {};
       const DEX_EXTRA = globalConst('DEX_EXTRA') || extractConst(dataSrc, 'DEX_EXTRA') || {};
       const FRIEND_INTO = extractConst(pcSrc, 'FRIEND_INTO') || {};
@@ -436,6 +444,14 @@
       }
 
       const BC = window.BattleCore || null;
+      const hasAnyEvolutionMetadata =
+        Object.keys(EVOLVE || {}).length > 0 ||
+        typeof BC?.evolutionsOf === 'function' ||
+        Object.keys(FRIEND_INTO || {}).length > 0 ||
+        mons.some(m => Array.isArray(m?.evolution) && m.evolution.length > 0);
+      if (!hasAnyEvolutionMetadata) {
+        CLEANER_SAFETY_METADATA_ISSUES.push('EVOLUTION_METADATA_UNAVAILABLE');
+      }
       const boxEvos = new Map();
 
       for (const m of mons) {
@@ -546,6 +562,17 @@
       for (const m of (nurseryRes.held || [])) if (m?.id != null) allOwnedMap.set(Number(m.id), m);
 
       const allOwned = [...allOwnedMap.values()];
+      const missingEggGroupDexes = [...new Set(
+        allOwned
+          .map(m => Number(m?.dex))
+          .filter(Number.isFinite)
+          .filter(d => EGG_GROUP[String(d)] == null && EGG_GROUP[d] == null)
+      )];
+      if (missingEggGroupDexes.length) {
+        CLEANER_SAFETY_METADATA_ISSUES.push(
+          `EGG_GROUP_INCOMPLETE_${missingEggGroupDexes.slice(0, 8).join('_')}`
+        );
+      }
       const dittos = allOwned.filter(m => Number(m.dex) === 132);
 
       // Breed Planner needs to know where an owned Pokémon currently lives.
@@ -884,7 +911,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.18.7
+      // FAMILY / BREEDING DECISIONS v1.18.8
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1016,11 +1043,8 @@
       }
 
       function defaultFamilyMode(info) {
-        const n = String(info?.label || '').toLowerCase();
-        // Defaults requested in this session. They only apply when the user has
-        // never saved an explicit decision for the family.
-        if (n === 'ralts' || n === 'abra') return FAMILY_MODE.DONE;
-        if (n === 'deino' || n === 'dratini') return FAMILY_MODE.TO_BE;
+        // Community-safe neutral default. Personal workflow choices belong in
+        // the player's saved local decisions, never in source-level species rules.
         return FAMILY_MODE.AUTO;
       }
 
@@ -1031,28 +1055,37 @@
         return BOX_POLICY.AUTO;
       }
 
+      function normalizeStoredFamilyDecision(key, raw, info = familyInfos.get(key)) {
+        raw = raw && typeof raw === 'object' ? raw : {};
+        const savedMode = raw.mode === 'DONE (finished)' ? FAMILY_MODE.DONE : raw.mode;
+        const mode = Object.values(FAMILY_MODE).includes(savedMode)
+          ? savedMode
+          : defaultFamilyMode(info);
+        const boxPolicy = Object.values(BOX_POLICY).includes(raw.boxPolicy)
+          ? raw.boxPolicy
+          : defaultBoxPolicy(info, mode);
+        const retention = Object.values(RETENTION).includes(raw.retention)
+          ? raw.retention
+          : RETENTION.AUTO;
+        return { mode, boxPolicy, retention };
+      }
+
       function loadFamilyDecisions() {
         let saved = {};
         try { saved = JSON.parse(localStorage.getItem(FAMILY_STORE_KEY) || '{}') || {}; } catch {}
         const out = new Map();
+
+        // Keep every persisted family decision even when all of that family's
+        // Pokémon are currently in Nursery / Team and therefore absent from PC.
+        for (const [key, raw] of Object.entries(saved)) {
+          out.set(key, normalizeStoredFamilyDecision(key, raw, familyInfos.get(key)));
+        }
+
+        // Add neutral defaults only for currently visible families that have no
+        // persisted policy yet. Saving another family can no longer erase an
+        // absent family's explicit mode / retention / box policy.
         for (const [key, info] of familyInfos.entries()) {
-          const raw = saved[key] || {};
-          // v1.5.4 bug: the UI emitted "DONE" but FAMILY_MODE.DONE was
-          // "DONE (finished)". Reload therefore rejected the saved value.
-          // Accept the old representation too, then normalize to DONE.
-          const savedMode = raw.mode === 'DONE (finished)' ? FAMILY_MODE.DONE : raw.mode;
-          const mode = Object.values(FAMILY_MODE).includes(savedMode) ? savedMode : defaultFamilyMode(info);
-          // v1.5/v1.5.1 stored a boolean `dedicated` whose default was far too
-          // aggressive (almost every repeated family became private). We
-          // intentionally migrate old booleans to AUTO so the 32-box layout can
-          // smart-fit. New explicit choices are stored as boxPolicy.
-          const boxPolicy = Object.values(BOX_POLICY).includes(raw.boxPolicy)
-            ? raw.boxPolicy
-            : defaultBoxPolicy(info, mode);
-          const retention = Object.values(RETENTION).includes(raw.retention)
-            ? raw.retention
-            : RETENTION.AUTO;
-          out.set(key, { mode, boxPolicy, retention });
+          if (!out.has(key)) out.set(key, normalizeStoredFamilyDecision(key, {}, info));
         }
         return out;
       }
@@ -1507,7 +1540,8 @@
         const labelMon = m =>
           `#${Number(m.id)} ${m.species} ${sex(m)}`;
 
-        // ── EVOLVE: exactly one eligible source ───────────────────
+        // ── EVOLVE: allocate one consumable source per missing branch ───────
+        const reservedEvolutionSourceIds = new Set();
         for (const [target,pool] of evoPools.entries()) {
           const eligible = [...pool].filter(m =>
             monDirectEvos(m).some(e =>
@@ -1516,13 +1550,23 @@
             )
           );
 
-          const best = (eligible.length ? eligible : [...pool]).sort((a,b) =>
+          const ranked = (eligible.length ? eligible : [...pool]).sort((a,b) =>
             Number(b.lvl||0)-Number(a.lvl||0) ||
             breederScore(b)-breederScore(a) ||
             Number(a.id)-Number(b.id)
-          )[0];
+          );
+
+          // Evolution is irreversible. Prefer a source not already committed to
+          // another missing branch, and preserve the current Living Dex copy when
+          // another eligible duplicate exists.
+          const best =
+            ranked.find(m => !reservedEvolutionSourceIds.has(Number(m.id)) && !livingDexCore.ids.has(Number(m.id))) ||
+            ranked.find(m => !reservedEvolutionSourceIds.has(Number(m.id))) ||
+            ranked.find(m => !livingDexCore.ids.has(Number(m.id))) ||
+            ranked[0];
 
           if (!best) continue;
+          reservedEvolutionSourceIds.add(Number(best.id));
 
           addMap(evoParents, Number(best.id), target);
 
@@ -1625,6 +1669,7 @@
           }
 
           pairCandidates.sort((a,b) =>
+            b.tier-a.tier ||
             b.score-a.score ||
             parentRank(a.producer,b.producer) ||
             parentRank(a.donor,b.donor)
@@ -1719,9 +1764,25 @@
           gender: m.gender == null ? null : String(m.gender),
           nature: String(m.nature || ''),
           ability: String(m.ability || ''),
-          ivs: STATS.map(k => Number(m?.ivs?.[k] || 0))
+          ivs: STATS.map(k => Number(m?.ivs?.[k] || 0)),
+          evs: STATS.map(k => Number(m?.evs?.[k] || 0)),
+          level: Number(m?.lvl ?? m?.level ?? 0),
+          friendship: Number(m?.friendship || 0),
+          favourite: !!m?.favourite,
+          shiny: !!m?.shiny,
+          shadow: !!m?.shadow,
+          rainbow: !!m?.rainbow,
+          nick: String(m?.nick || ''),
+          item: m?.item == null ? null : m.item
         });
       }
+
+      // Destructive jobs use a whole-PC expected snapshot, not only selected IDs.
+      // A keeper disappearing, a new Pokémon appearing, or any safety-relevant
+      // property changing invalidates the batch and requires a fresh review.
+      let expectedLiveFingerprints = new Map(
+        mons.map(m => [Number(m.id), monFingerprint(m)])
+      );
 
       function rebuildAnalysis(resetSelection = true) {
         activeEggGroups = activeBreedingEggGroups();
@@ -1771,7 +1832,7 @@
             reason = livingDexCore.why.get(Number(m.id)) || 'LIVING_DEX';
           } else if (explicitBreeding && exactCore.has(Number(m.id))) {
             reason = coreReasons.join(', ') || 'BREEDING_CORE';
-          } else if (explicitBreeding && activeEggDonor) {
+          } else if (activeEggDonor) {
             reason = eggReasons.join(', ') || 'ACTIVE_EGG_DONOR';
           } else {
             // AUTO/DONE/NO_BREED are collection modes now: once the living-dex
@@ -1856,6 +1917,7 @@
         return { rows, candidates, keep };
       }
 
+      syncBreedPlanFamilyModes(true);
       rebuildAnalysis(true);
 
       function printSummary() {
@@ -1863,7 +1925,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.18.7 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.8 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -2007,10 +2069,6 @@ No Pokémon will be moved or released.`)) return;
         renderFamilyDecisionRows?.();
         managerUpdateNav?.();
       }
-
-      // Repair/synchronize projects saved by v1.16 as soon as live Nursery data
-      // is available. This fixes projects that incorrectly showed AUTO after reload.
-      syncBreedPlanFamilyModes(true);
 
       function escAttr(v) {
         return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -2422,7 +2480,9 @@ No Pokémon will be moved or released.`)) return;
 
       function breedPlannerVirtualMon(target, stats, desired, natureReady, label='Previous offspring', breedDex=null) {
         const mask = new Set(stats || []);
-        const nextDex=Number.isFinite(Number(breedDex)) ? Number(breedDex) : Number(target.eggDex);
+        const nextDex=breedDex != null && Number.isFinite(Number(breedDex))
+          ? Number(breedDex)
+          : Number(target.eggDex);
         return {
           __virtual:true,
           id:null,
@@ -3727,29 +3787,31 @@ No Pokémon will be moved or released.`)) return;
         const liveMap = await fetchLiveBoxMap();
         const problems = [];
 
-        for (const id of ids) {
-          const row = candidateById.get(id);
+        for (const [id, expectedFp] of expectedLiveFingerprints.entries()) {
           const live = liveMap.get(id);
-
-          if (!row) {
-            problems.push(`#${id}: no longer in the current cleanup list`);
-            continue;
-          }
-
           if (!live) {
-            problems.push(`#${id}: no longer present in PC`);
+            problems.push(`#${id}: PC inventory changed since analysis (expected Pokémon missing)`);
             continue;
           }
-
-          const oldFp = candidateFingerprints.get(id);
-          const liveFp = monFingerprint(live);
-
-          if (!oldFp || oldFp !== liveFp) {
-            problems.push(`#${id} ${row.Pokemon}: live data changed since analysis`);
+          if (monFingerprint(live) !== expectedFp) {
+            problems.push(`#${id} ${live.species || ''}: safety-relevant live data changed since analysis`);
           }
         }
 
-        return { liveMap, problems };
+        for (const [id, live] of liveMap.entries()) {
+          if (!expectedLiveFingerprints.has(id)) {
+            problems.push(`#${id} ${live.species || ''}: new or unexpected PC Pokémon appeared since analysis`);
+          }
+        }
+
+        for (const id of ids) {
+          const row = candidateById.get(id);
+          const live = liveMap.get(id);
+          if (!row) problems.push(`#${id}: no longer in the current cleanup list`);
+          if (!live) problems.push(`#${id}: selected Pokémon is no longer present in PC`);
+        }
+
+        return { liveMap, problems:[...new Set(problems)] };
       }
 
       function parseRetryAfterMs(r, body) {
@@ -3784,6 +3846,9 @@ No Pokémon will be moved or released.`)) return;
         const blocks = [];
 
         if (!Number.isFinite(id)) blocks.push('INVALID_ID');
+        for (const issue of CLEANER_SAFETY_METADATA_ISSUES) {
+          blocks.push(`SAFETY_METADATA_${issue}`);
+        }
         if (releasedIds.has(id)) blocks.push('ALREADY_RELEASED');
         if (!row) blocks.push('NOT_IN_CANDIDATE_SET');
         if (row && row.Status !== 'RELEASE_CANDIDATE') blocks.push(`STATUS_${row.Status}`);
@@ -3840,19 +3905,18 @@ No Pokémon will be moved or released.`)) return;
           if (explicitBreeding && exactCore.has(id)) {
             blocks.push(
               'ACTIVE_BREEDING_CORE_' +
-              ((exactCoreWhy.get(id) || ['CORE']).join('+'))
+              ([...(exactCoreWhy.get(id) || ['CORE'])].join('+'))
             );
           }
 
           const activeEggDonor =
-            explicitBreeding &&
             maleEggCore.has(id) &&
             groupsOf(m).some(g => activeEggGroups.has(g));
 
           if (activeEggDonor) {
             blocks.push(
               'ACTIVE_EGG_DONOR_' +
-              ((maleEggWhy.get(id) || ['DONOR']).join('+'))
+              ([...(maleEggWhy.get(id) || ['DONOR'])].join('+'))
             );
           }
         }
@@ -3881,7 +3945,15 @@ No Pokémon will be moved or released.`)) return;
       }
 
       async function releaseOne(id) {
-        // Independent last gate immediately before the irreversible request.
+        // Independent live + local gates immediately before the irreversible
+        // request. A 429 retry returns here and revalidates again after the wait.
+        const liveCheck = await validateSelectedLive([Number(id)]);
+        if (liveCheck.problems.length) {
+          const err = new Error(`LIVE SAFETY VALIDATION blocked #${id}: ${liveCheck.problems.slice(0, 5).join('; ')}`);
+          err.code = 'LOCAL_LIVE_VALIDATION';
+          err.liveProblems = liveCheck.problems;
+          throw err;
+        }
         assertReleaseInterlock(id);
 
         const r = await fetch('/api/box/release', {
@@ -4027,6 +4099,9 @@ No Pokémon will be moved or released.`)) return;
             try {
               const result = await releaseOneWithBackoff(id, row);
               releasedIds.add(id);
+              // The server confirmed this ID was removed. Advance the expected
+              // whole-PC snapshot so the next release can still be validated.
+              expectedLiveFingerprints.delete(id);
               selectedIds.delete(id);
               releaseErrors.delete(id);
               done++;
@@ -4073,7 +4148,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.18.7) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.8) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';

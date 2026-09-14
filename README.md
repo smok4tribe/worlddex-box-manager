@@ -4,7 +4,7 @@ Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
 It adds an on-demand floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
 
-> **Current version: v1.18.7**
+> **Current version: v1.18.8**
 
 ## What it can do
 
@@ -61,6 +61,8 @@ High-IV protection is intentionally different for completed breeding families:
 `DONE` also keeps a small useful quality collection of strong final evolutions instead of blindly preserving every merely-good duplicate.
 
 Nothing is released automatically. You review the list and confirm before anything is removed.
+
+Before every irreversible release request, v1.18.8 revalidates the full PC safety snapshot. If a keeper disappears, a new Pokémon appears, or a safety-relevant property such as favourite, nickname, held item, EVs, friendship or rare status changes, the batch stops and requires a fresh review. Required breeding metadata also fails closed instead of silently weakening cleanup protection.
 
 ### Breed Planner
 
