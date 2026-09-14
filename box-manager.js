@@ -368,7 +368,7 @@
       }
 
       console.log(
-        '%cBOX MANAGER v1.18.8 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
+        '%cBOX MANAGER v1.18.9 — BREED PATHS + ODDS + PROJECTS + CLEANER + ORGANIZER',
         'font-weight:bold;color:#8be9fd;font-size:14px'
       );
       console.log('%cNO AUTOMATIC RELEASES — release only from review panel after double confirmation', 'font-weight:bold;color:#ffb86c');
@@ -911,7 +911,7 @@
       }
 
       // ─────────────────────────────────────────────────────────────
-      // FAMILY / BREEDING DECISIONS v1.18.8
+      // FAMILY / BREEDING DECISIONS v1.18.9
       // A family is an evolution line (Ralts/Gardevoir/Gallade, Charmander/
       // Charmeleon/Charizard, etc.). The user decides whether each line is
       // actively being bred, parked for later, finished, or not worth breeding.
@@ -1925,7 +1925,7 @@
         for (const r of rows) {
           for (const x of String(r.Reason || '').split(/,\s*/).filter(Boolean)) reasonCounts[x] = (reasonCounts[x] || 0) + 1;
         }
-        console.log('%c=== SUMMARY v1.18.8 ===', 'font-weight:bold;color:#50fa7b');
+        console.log('%c=== SUMMARY v1.18.9 ===', 'font-weight:bold;color:#50fa7b');
         console.table([{
           BoxPokemon: rows.length,
           DexCaught: caught.size,
@@ -2126,7 +2126,7 @@ No Pokémon will be moved or released.`)) return;
 
 
       // ─────────────────────────────────────────────────────────────
-      // BREED PLANNER v1.18.7
+      // BREED PLANNER v1.18.9
       // Goal-first planner: choose the Pokémon you want, then rank legal pairs
       // from BOX + TEAM + NURSERY. Same-species pairs receive a strong efficiency
       // preference because Worlddex warns that different species produce Eggs
@@ -2361,8 +2361,6 @@ No Pokémon will be moved or released.`)) return;
 
           // Nursery presence is informational, not a ranking lock. Keeping the old
           // pair in the Nursery must never outweigh a better offspring's breeding odds.
-          if (ownedLocation(a) === 'TEAM') score -= 3;
-          if (ownedLocation(b) === 'TEAM') score -= 3;
           score += (ivSum(a)+ivSum(b))/120;
 
           results.push({
@@ -2531,7 +2529,6 @@ No Pokémon will be moved or released.`)) return;
           if (desired.sameSpeciesOnly && !sameSpecies) continue;
           let score = adds.length * 220 + (addsNature ? 95 : 0) + (sameSpecies ? 60 : 0) + ivPct(donor) / 2;
           if (ownedLocation(donor) === 'NURSERY') score -= 20;
-          if (ownedLocation(donor) === 'TEAM') score -= 3;
           if (isDitto) score -= 8;
           out.push({ donor, adds, addsNature, sameSpecies, score });
         }
@@ -2910,7 +2907,7 @@ No Pokémon will be moved or released.`)) return;
 
       const BREED_PLANNER_LIVE_REFRESH_MS = 4000;
 
-      function breedPlannerInventorySignature(boxBody, nurseryBody) {
+      function breedPlannerInventorySignature(boxBody, stateBody, nurseryBody) {
         const rows=[];
         const push=(where,m)=>{
           if (m?.id == null) return;
@@ -2924,16 +2921,30 @@ No Pokémon will be moved or released.`)) return;
             ...STATS.map(stat => Number(m?.ivs?.[stat] || 0))
           ].join(':'));
         };
+        const liveState = stateBody?.state || stateBody || {};
         for (const m of (Array.isArray(boxBody?.mons) ? boxBody.mons : [])) push('B',m);
+        for (const m of (Array.isArray(liveState?.team) ? liveState.team : [])) push('T',m);
         for (const m of (Array.isArray(nurseryBody?.held) ? nurseryBody.held : [])) push('N',m);
         return rows.sort().join('|');
       }
 
       function breedPlannerCurrentInventorySignature() {
-        return breedPlannerInventorySignature({ mons }, { held:nurseryHeld });
+        return breedPlannerInventorySignature({ mons }, { team:state.team || [] }, { held:nurseryHeld });
       }
 
       async function breedPlannerRefreshLiveData(reason='manual') {
+        // Automatic inventory watching must never resurrect or expand a planner
+        // the player has closed, switched away from, or minimized. Keep the old
+        // baseline in those states so restoring the visible Planner can refresh
+        // on the next watch tick instead of silently accepting stale data.
+        if (reason !== 'manual') {
+          const shell=document.getElementById('wd-manager-shell-v110');
+          const planner=document.getElementById('wd-breed-planner-v116');
+          if (!shell || !planner || shell.dataset.view !== 'planner' || shell.classList.contains('wdm-minimized')) {
+            return false;
+          }
+        }
+
         saveBreedPlannerFormState();
         const calculated=document.getElementById('wd-breed-calculated');
         if(calculated) calculated.textContent = reason === 'manual'
@@ -2955,17 +2966,18 @@ No Pokémon will be moved or released.`)) return;
           }
           checking=true;
           try {
-            const [boxNow,nurseryNow]=await Promise.all([
+            const [boxNow,stateNow,nurseryNow]=await Promise.all([
               getJSON('/api/box'),
+              getJSON('/api/state'),
               getJSON('/api/nursery').catch(()=>({held:[]}))
             ]);
-            const next=breedPlannerInventorySignature(boxNow,nurseryNow);
+            const next=breedPlannerInventorySignature(boxNow,stateNow,nurseryNow);
             if (next !== baseline) {
-              baseline=next;
-              await breedPlannerRefreshLiveData('inventory-change');
+              const refreshed=await breedPlannerRefreshLiveData('inventory-change');
+              if (refreshed !== false) baseline=next;
             }
           } catch (err) {
-            console.warn('[Worlddex Box Manager v1.18.7] Breed Planner live refresh check failed', err);
+            console.warn('[Worlddex Box Manager v1.18.9] Breed Planner live refresh check failed', err);
           } finally {
             checking=false;
           }
@@ -3392,7 +3404,7 @@ No Pokémon will be moved or released.`)) return;
         shell.innerHTML = `
           <div class="wdm-head">
             <div class="wdm-brand">
-              <b>Worlddex Box Manager v1.18.7</b>
+              <b>Worlddex Box Manager v1.18.9</b>
               <small id="wd-manager-current-view">Clean Up</small>
             </div>
             <div class="wdm-nav">
@@ -4148,7 +4160,7 @@ No Pokémon will be moved or released.`)) return;
 
           alert(
             `Done. ${done} Pokémon released and verified.\n\n` +
-            `Press Reload data (or re-run Box Manager v1.18.8) before another batch so all protection cores are recalculated from the new box.`
+            `Press Reload data (or re-run Box Manager v1.18.9) before another batch so all protection cores are recalculated from the new box.`
           );
         } finally {
           btn.dataset.busy = '0';
@@ -4396,7 +4408,7 @@ No Pokémon will be moved or released.`)) return;
       }
 
       // ─────────────────────────────────────────────────────────────
-      // BOX ORGANIZER v1.18.7
+      // BOX ORGANIZER v1.18.9
       // Uses the game's own endpoints discovered in pc.js:
       //   POST /api/box/move     { monId, box }
       //   POST /api/pc/box-name  { box, name }
@@ -6711,7 +6723,7 @@ No Pokémon will be moved or released.`)) return;
         const bindOrganizer = (id, event, fn) => {
           const el = document.getElementById(id);
           if (!el) {
-            console.warn(`[Worlddex Box Manager v1.18.7] Organizer control missing: #${id}`);
+            console.warn(`[Worlddex Box Manager v1.18.9] Organizer control missing: #${id}`);
             return null;
           }
           el.addEventListener(event, fn);
@@ -7294,7 +7306,7 @@ No Pokémon will be moved or released.`)) return;
       await __wdManagerRun();
       return true;
     } catch (err) {
-      console.error('[Worlddex Box Manager v1.18.7] reload failed', err);
+      console.error('[Worlddex Box Manager v1.18.9] reload failed', err);
       __wdManagerShowLauncher();
       alert('Worlddex Box Manager reload failed. Check the console; no release was started.');
       throw err;
