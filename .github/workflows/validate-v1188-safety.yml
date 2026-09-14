@@ -1,0 +1,45 @@
+name: Validate Box Manager v1.18.8 safety hardening
+
+on:
+  push:
+    branches:
+      - box-v1-18-8-safety-hardening
+    paths:
+      - ".github/workflows/validate-v1188-safety.yml"
+      - ".github/scripts/apply_v1_18_8_safety.py"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: box-v1-18-8-safety-hardening
+
+      - name: Apply patch in validation workspace
+        run: python .github/scripts/apply_v1_18_8_safety.py
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check box-manager.js
+          node tests/safety-regressions.cjs
+          git diff --check
+          grep -Fq 'doneMarketHardIVPct: 90' box-manager.js
+          grep -Fq 'protectFourPerfectIVsHard: true' box-manager.js
+          grep -Fq 'NO AUTOMATIC RELEASES — release only from review panel after double confirmation' box-manager.js
+
+      - name: Package patched product files
+        uses: actions/upload-artifact@v4
+        with:
+          name: box-manager-v1-18-8-safety
+          path: |
+            box-manager.js
+            README.md
+            CHANGELOG.md
+            tests/safety-regressions.cjs
+            .github/workflows/build.yml
