@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.19.0
+
+- **Organizer redesign:** simplified configuration into What goes where, Breeding families and Box layout.
+- Battle Ready is strict by default: enabled rules are cumulative, with the recommended profile requiring Level 100 **and** 508+ total EVs; partial EV investment no longer qualifies.
+- Favourite status is no longer treated as a Special destination. Favourites remain Cleaner-protected and can optionally be pinned in their current box; trained favourites can otherwise flow to Battle Ready.
+- `AUTO`, `DONE` and `NO BREED` families now pool into Collection unless explicitly set to `OWN BOX`; only active `BREED NOW` / `TO-BE` projects participate in automatic family grouping.
+- Replaced generic `STORAGE` presentation with **COLLECTION** and renamed physical cleanup-candidate boxes to **CLEANUP REVIEW**.
+- Reworked physical placement into two independent controls: **Reserve first N boxes for catches** (default 2) keeps the low-numbered intake area free, while explicit **Low → High / High → Low** fill direction chooses which end of the remaining range receives the first section. The physical 32-box map and preview follow that direction.
+- Battle Ready criteria are grouped under one parent control, and the Box Order editor now expands as a compact wrapped inline control instead of covering the physical preview; the persistent summary still labels the real physical traversal without misleading generic ordinals.
+- Organizer now scrolls as one continuous view instead of trapping vertical scroll inside the preview table. Large applies also reduce periodic `/api/box` sanity refreshes from every 10 successful moves to every 50, while preserving initial live validation, immediate `BOX_FULL` recovery, 429 backoff, and final live verification.
+- Final Organizer destinations remain capped at 99 Pokémon, while the move scheduler can use a verified backend 100th slot only as a temporary swap-cycle buffer, prioritizing reserved intake boxes.
+- Cleaner safety, `doneMarketHardIVPct: 90`, `protectFourPerfectIVsHard: true`, review/double confirmation and no-automatic-release invariants are unchanged.
+
 ## v1.18.9
 
 - Fixed Breed Planner ranking changing solely because a breeder was moved from the PC into the six-Pokémon main Team; Team location is now informational and no longer applies a ranking penalty.

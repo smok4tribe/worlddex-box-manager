@@ -4,7 +4,7 @@ Unofficial community Box Manager for [Worlddex](https://worlddex.de/).
 
 It adds an on-demand floating PC-management panel that helps you organize large boxes, clean duplicates, plan breeding projects and track Pokédex needs without changing how Worlddex itself works.
 
-> **Current version: v1.18.9**
+> **Current version: v1.19.0**
 
 ## What it can do
 
@@ -12,27 +12,17 @@ It adds an on-demand floating PC-management panel that helps you organize large 
 
 Builds a preview before moving anything.
 
-You can choose whether to keep these groups together:
+Organizer v1.19 is structured around three decisions: **what goes where**, **breeding families**, and **box layout**.
 
-- Battle Ready / trained Pokémon;
-- breeding projects;
-- Synchronize Pokémon;
-- Pokédex Tasks;
-- Special Pokémon.
+- **Battle Ready** is strict by default: Level 100 **and** a complete competitive EV spread (508+ total EVs). Enabled Battle Ready checks are cumulative rather than OR conditions.
+- **Favourites** are Cleaner protection, not an Organizer destination. They can still become Battle Ready; an independent option can pin favourites in their current boxes.
+- **Rare / unbreedable**, Pokédex Tasks and Synchronize Pokémon can each be grouped separately.
+- **BREED NOW / TO-BE** projects can receive family boxes. `AUTO`, `DONE` and `NO BREED` families flow into normal collection pools unless the family is explicitly set to `OWN BOX`.
+- Generic fallback storage is presented as **COLLECTION** and cleanup-candidate boxes are named **CLEANUP REVIEW**.
 
-You can also:
+Physical layout separates **intake reserve** from **fill direction**. Reserve the first N boxes for incoming catches / received Pokémon, then choose **Low → High** or **High → Low** for the remaining organized range. With the default 2-box reserve, that means either Box 3 → 32 or Box 32 → 3. In **Balanced** and **Keep boxes ordered**, the first item in **Edit box order** maps to the visible start side of that traversal; **Minimize moves** treats direction and section order as preferences while still excluding the reserved intake boxes.
 
-- keep favourites in their current boxes;
-- turn automatic box renaming on or off;
-- choose the level threshold used for Battle Ready Pokémon;
-- choose how strongly the manager should preserve your current layout;
-- choose physical box direction: **32 → 1 (recommended)** or **1 → 32**;
-- customize the order of the sections that actually exist in your current setup;
-- keep the organized block at the **high end of the 32-box PC** by default so the early boxes remain a landing zone for new captures / received Pokémon.
-
-The Organizer never releases Pokémon. It only moves them between boxes and optionally renames boxes.
-
-Families marked **DONE** or **NO BREED** are treated as collection stock instead of active breeding blobs when Box Policy is `AUTO`. Their remaining Pokémon are pooled into **FINAL EVOLUTIONS** / **STORAGE** rather than automatically creating large dedicated family boxes. A manually selected `OWN BOX` still wins.
+The Organizer never releases Pokémon. It only moves them between boxes and optionally renames boxes. Final planned boxes stay under the conservative 99-Pokémon cap; the move scheduler may use one verified backend slot temporarily to break a full-box swap cycle without changing the final cap.
 
 ### Clean Up
 
@@ -62,7 +52,7 @@ High-IV protection is intentionally different for completed breeding families:
 
 Nothing is released automatically. You review the list and confirm before anything is removed.
 
-Before every irreversible release request, v1.18.9 revalidates the full PC safety snapshot. If a keeper disappears, a new Pokémon appears, or a safety-relevant property such as favourite, nickname, held item, EVs, friendship or rare status changes, the batch stops and requires a fresh review. Required breeding metadata also fails closed instead of silently weakening cleanup protection.
+Before every irreversible release request, v1.19.0 revalidates the full PC safety snapshot. If a keeper disappears, a new Pokémon appears, or a safety-relevant property such as favourite, nickname, held item, EVs, friendship or rare status changes, the batch stops and requires a fresh review. Required breeding metadata also fails closed instead of silently weakening cleanup protection.
 
 ### Breed Planner
 
@@ -150,17 +140,19 @@ Separates more useful groups, such as Synchronize, Pokédex Tasks and breeding p
 
 You can change any option after selecting a preset.
 
-## Layout priority and box direction
+## Layout priority and intake reserve
 
-The PC currently has **32 boxes**. Layout priority and physical direction are separate controls. The factory direction is **32 → 1 (recommended)** so routine catches do not immediately spill into the organized block, but players who prefer the traditional layout can select **1 → 32**.
+The PC currently has **32 boxes**. Organizer v1.19 reserves the low-numbered intake area first, then applies the selected **Fill direction** only to the remaining physical range. With 2 reserved boxes, **Low → High** traverses Box 3 → 32 and **High → Low** traverses Box 32 → 3.
 
-- **Balanced** keeps your section order while allowing a small gap when it meaningfully reduces unnecessary moves.
-- **Keep boxes ordered** follows the chosen order as tightly as possible.
-- **Minimize moves** prioritizes leaving Pokémon where they already are and can ignore physical direction when that avoids extra moves.
+- **Balanced** preserves section order along the selected direction while allowing a gap when it meaningfully reduces unnecessary moves.
+- **Keep boxes ordered** follows the chosen physical traversal as tightly as possible.
+- **Minimize moves** prioritizes leaving Pokémon where they already are. The selected direction becomes a preference rather than a strict packing rule, but reserved intake boxes are still excluded as final Organizer destinations.
 
-Worlddex normally places newly caught / received Pokémon into the first available PC space. Keeping the low-numbered boxes as the natural intake buffer means you can play, catch and hatch without constantly dirtying the front of an already organized PC.
+Worlddex normally places newly caught / received Pokémon into the first available PC space. **Reserve first boxes for catches** therefore remains independent from direction: Box 1–2 can stay as a predictable landing zone even while the organized collection fills from Box 32 downward.
 
-The order editor only shows sections that are actually present in the current preview. If your setup only creates four groups, you only need to order those four groups.
+The physical-map preview follows the selected direction and still marks intake boxes, planned destinations and unused boxes. **Edit box order** expands a compact wrapped editor inline beneath the persistent traversal summary (for example `Box 32 → Box 3`), so reordering does not cover the physical map and the first category is not confused with a generic physical “1”. The Organizer content area uses one continuous vertical scroll, so configuration, physical map, summary, preview table and log remain reachable without resizing the window.
+
+Large applies remain sequential and rate-limit aware. The scheduler updates its local occupancy after each successful move and performs a periodic live `/api/box` sanity refresh every 50 successful moves rather than every 10. This does **not** remove safety gates: apply still starts from a live PC validation, `BOX_FULL` forces an immediate server-truth refresh/replan step, HTTP 429 uses adaptive backoff, and the completed move batch is verified against a fresh live box read before box renames finish.
 
 ## Interface
 
@@ -212,7 +204,7 @@ Even with these safeguards, this is an unofficial community tool. Review the cle
 
 ## Transparency
 
-The current v1.18.9 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
+The current v1.19.0 source remains same-origin-only and has been reviewed for unexpected network activity, credential access, remote code loading and hidden browser-side behavior.
 
 What the script does:
 
@@ -221,7 +213,7 @@ What the script does:
 - writes only to Worlddex endpoints used for the features you explicitly run: `/api/box/release`, `/api/box/move` and `/api/pc/box-name`;
 - stores Box Manager preferences and project state locally in `localStorage`, including breeding / special retention choices, Breed Planner projects, Organizer settings, the active view and panel position.
 
-What is not present in v1.18.9:
+What is not present in v1.19.0:
 
 - no third-party URLs or external API calls;
 - no analytics, tracking, ads, webhooks or telemetry;

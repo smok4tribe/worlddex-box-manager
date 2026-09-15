@@ -9,6 +9,7 @@ on:
       - "box-manager.js"
       - "tests/safety-regressions.cjs"
       - "tests/breed-planner-team-regressions.cjs"
+      - "tests/organizer-regressions.cjs"
       - ".github/workflows/build.yml"
   pull_request:
     branches:
@@ -17,6 +18,7 @@ on:
       - "box-manager.js"
       - "tests/safety-regressions.cjs"
       - "tests/breed-planner-team-regressions.cjs"
+      - "tests/organizer-regressions.cjs"
       - ".github/workflows/build.yml"
 
 permissions:
@@ -28,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Box Manager v1.18.9
+      - name: Verify Box Manager v1.19.0
         shell: bash
         run: |
           set -euo pipefail
@@ -36,12 +38,17 @@ jobs:
           node --check box-manager.js
           node tests/safety-regressions.cjs
           node tests/breed-planner-team-regressions.cjs
+          node tests/organizer-regressions.cjs
 
-          grep -Fq "BOX MANAGER v1.18.9" box-manager.js
+          grep -Fq "BOX MANAGER v1.19.0" box-manager.js
+
           grep -Fq "NO AUTOMATIC RELEASES — release only from review panel after double confirmation" box-manager.js
           grep -Fq "doneMarketHardIVPct: 90" box-manager.js
           grep -Fq "protectFourPerfectIVsHard: true" box-manager.js
+          grep -Fq "wd-organizer-reserve-first" box-manager.js
           grep -Fq "wd-organizer-box-direction" box-manager.js
+          grep -Fq "wd-org-trained-criteria" box-manager.js
+          grep -Fq "wdorg-order-inline" box-manager.js
           grep -Fq "BREED_PLANNER_FORM_KEY" box-manager.js
           grep -Fq "BREED_PLANNER_LIVE_REFRESH_MS" box-manager.js
           grep -Fq "rollProbability" box-manager.js
@@ -54,4 +61,4 @@ jobs:
           grep -Fq "Living Dex protected" box-manager.js
           grep -Fq "Alola region" box-manager.js
 
-          echo "Box Manager v1.18.9 syntax, safety, and Breed Planner Team regressions verified."
+          echo "Box Manager v1.19.0 syntax, safety, Breed Planner Team and Organizer regressions verified."
