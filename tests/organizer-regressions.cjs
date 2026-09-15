@@ -14,7 +14,25 @@ assert(src.includes('BOX MANAGER v1.19.0'));
 assert(src.includes('const ORGANIZER_FULL_EV_TOTAL = 508'));
 assert(src.includes("reserveFirstBoxes:2"));
 assert(src.includes('wd-organizer-reserve-first'));
-assert(!src.includes('wd-organizer-box-direction'), 'v1.19 must not expose the old direction control');
+assert(src.includes('wd-organizer-box-direction'), 'v1.19 must expose an explicit fill direction independent of intake reserve');
+assert(src.includes('wd-org-trained-criteria'), 'Battle Ready criteria must be visually nested under the parent control');
+assert(src.includes('wdorg-order-inline'), 'Box Order editor must render inline instead of covering the physical preview');
+assert(!src.includes('wd-organizer-order-direction-title'), 'Box Order must not duplicate the physical-direction summary');
+assert(!src.includes('wdorg-order-num'), 'Box Order must not show misleading logical ordinals as physical box numbers');
+const orderEditorCss = between('#wd-box-organizer-v14 .wdorg-order-editor {', '#wd-box-organizer-v14 .wdorg-order-editor[hidden]');
+assert(!orderEditorCss.includes('position:absolute'), 'Box Order editor must not be an overlay popover');
+const orderListCss = between('#wd-box-organizer-v14 .wdorg-order-list {', '#wd-box-organizer-v14 .wdorg-order-row {');
+assert(orderListCss.includes('flex-wrap:wrap'), 'Box Order categories must wrap compactly inline');
+
+const organizerBodyCss = between('#wd-box-organizer-v14 .wdorg-body {', '#wd-box-organizer-v14 .wdorg-tools {');
+assert(organizerBodyCss.includes('overflow-y:auto'), 'the whole Organizer body must own vertical scrolling');
+const organizerTableWrapCss = between('#wd-box-organizer-v14 .wdorg-tablewrap {', '#wd-box-organizer-v14 table {');
+assert(organizerTableWrapCss.includes('flex:0 0 auto'), 'the preview table must flow inside the Organizer body instead of owning the only vertical scrollbar');
+
+assert(src.includes('const ORGANIZER_REFRESH_EVERY_MOVES = 50;'), 'large Organizer applies should use sparse periodic live-box refreshes');
+assert(src.includes("if (err?.code === 'BOX_FULL')"), 'BOX_FULL must still trigger immediate recovery logic');
+assert(src.includes("'Initial organizer live-box check'"), 'Organizer must keep initial live validation');
+assert(src.includes("'Verify moved boxes'"), 'Organizer must keep final live layout verification');
 assert(src.includes("STORAGE:'COLLECTION'"));
 assert(src.includes("RELEASE:'CLEANUP REVIEW'"));
 assert(src.includes("base:'CLEANUP REVIEW'"));
@@ -26,7 +44,7 @@ const migratedPrefs = normalizePrefs({
   boxDirection:'descending'
 });
 assert.deepStrictEqual(Array.from(migratedPrefs.categoryOrder.slice(0,2)),['BATTLE_READY','SPECIAL'],'legacy default order should migrate to v1.19 semantics');
-assert.strictEqual(migratedPrefs.boxDirection,'ascending','legacy reverse direction must not survive v1.19 migration');
+assert.strictEqual(migratedPrefs.boxDirection,'descending','explicit saved fill direction must survive v1.19 preference normalization');
 assert.strictEqual(migratedPrefs.reserveFirstBoxes,2,'v1.19 default intake reserve should be two boxes');
 const organizerSection = between('// BOX ORGANIZER v1.19.0', 'function mountReviewPanel');
 assert(!organizerSection.includes('/api/box/release'), 'Organizer must never call the release endpoint');
@@ -79,7 +97,8 @@ assert(planBlock.includes('reserveFirstBoxes'), 'intake reserve missing from pla
 
 const placementBlock = between('function stableAssignOrganizerBoxes', 'function buildOrganizerPlan');
 assert(placementBlock.includes('eligibleBoxes'), 'stable placement must exclude reserved intake boxes');
-assert(placementBlock.includes('localTargets=maxScoreIncreasingAssignment(scores)'), 'ordered placement must be low-to-high after reserve');
+assert(placementBlock.includes("direction === 'descending'"), 'stable placement must support high-to-low traversal');
+assert(placementBlock.includes('localTargets=maxScoreIncreasingAssignment(scores)'), 'Balanced/Ordered placement must preserve logical order along the selected traversal');
 
 const placementDeps = between('function hungarianMin', 'function stableAssignOrganizerBoxes');
 const stableAssign = vm.runInNewContext(`(() => {
@@ -91,16 +110,26 @@ const stableAssign = vm.runInNewContext(`(() => {
 })()`);
 const def=(name,size,currentBox=0)=>({base:name,items:Array.from({length:size},()=>({box:currentBox}))});
 assert.deepStrictEqual(
-  Array.from(stableAssign([def('A',10),def('B',10)],6,99,new Map(),'ordered',2).targets),
+  Array.from(stableAssign([def('A',10),def('B',10)],6,99,new Map(),'ordered',2,'ascending').targets),
   [2,3],
-  'ordered layout should start at the earliest non-reserved physical box'
+  'ascending ordered layout should start at the earliest non-reserved physical box'
+);
+assert.deepStrictEqual(
+  Array.from(stableAssign([def('A',10),def('B',10)],6,99,new Map(),'ordered',2,'descending').targets),
+  [5,4],
+  'descending ordered layout should start at the highest physical box while preserving the intake reserve'
 );
 assert.strictEqual(
-  stableAssign([def('A',99)],5,99,new Map([[2,1]]),'ordered',2).targets[0],
+  stableAssign([def('A',99)],5,99,new Map([[2,1]]),'ordered',2,'ascending').targets[0],
   3,
-  'a pinned favourite occupying the first organized box must make placement skip to a feasible box'
+  'a pinned favourite occupying the first ascending organized box must make placement skip to a feasible box'
 );
-assert(stableAssign([def('A',1,0)],5,99,new Map(),'min_moves',2).targets[0] >= 2, 'min-moves must still exclude reserved intake boxes');
+assert.strictEqual(
+  stableAssign([def('A',99)],5,99,new Map([[4,1]]),'ordered',2,'descending').targets[0],
+  3,
+  'a pinned favourite occupying the first descending organized box must make placement skip to the next feasible box'
+);
+assert(stableAssign([def('A',1,0)],5,99,new Map(),'min_moves',2,'descending').targets[0] >= 2, 'min-moves must still exclude reserved intake boxes');
 
 const applyBlock = between('async function applyOrganizerPlan', 'function mountOrganizerPanel');
 assert(applyBlock.includes('incomingLimit = temporary ? SERVER_BOX_MOVE_CAPACITY : ORGANIZER_SAFE_CAPACITY'), 'temporary backend buffer policy missing');

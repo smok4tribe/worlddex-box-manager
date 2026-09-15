@@ -20,7 +20,7 @@ Organizer v1.19 is structured around three decisions: **what goes where**, **bre
 - **BREED NOW / TO-BE** projects can receive family boxes. `AUTO`, `DONE` and `NO BREED` families flow into normal collection pools unless the family is explicitly set to `OWN BOX`.
 - Generic fallback storage is presented as **COLLECTION** and cleanup-candidate boxes are named **CLEANUP REVIEW**.
 
-Physical layout is now explicit instead of using a confusing direction toggle. Reserve the first N boxes for incoming catches / received Pokémon, then the Organizer places its ordered block from the earliest remaining box upward. The first item in **Customize box order** therefore maps to the earliest organized physical box.
+Physical layout separates **intake reserve** from **fill direction**. Reserve the first N boxes for incoming catches / received Pokémon, then choose **Low → High** or **High → Low** for the remaining organized range. With the default 2-box reserve, that means either Box 3 → 32 or Box 32 → 3. In **Balanced** and **Keep boxes ordered**, the first item in **Edit box order** maps to the visible start side of that traversal; **Minimize moves** treats direction and section order as preferences while still excluding the reserved intake boxes.
 
 The Organizer never releases Pokémon. It only moves them between boxes and optionally renames boxes. Final planned boxes stay under the conservative 99-Pokémon cap; the move scheduler may use one verified backend slot temporarily to break a full-box swap cycle without changing the final cap.
 
@@ -142,15 +142,17 @@ You can change any option after selecting a preset.
 
 ## Layout priority and intake reserve
 
-The PC currently has **32 boxes**. Organizer v1.19 always interprets your section order from low physical box number to high physical box number **after** the intake reserve. For example, reserving the first 2 boxes means the first active section starts at Box 3.
+The PC currently has **32 boxes**. Organizer v1.19 reserves the low-numbered intake area first, then applies the selected **Fill direction** only to the remaining physical range. With 2 reserved boxes, **Low → High** traverses Box 3 → 32 and **High → Low** traverses Box 32 → 3.
 
-- **Balanced** keeps section order while allowing a gap when it meaningfully reduces unnecessary moves.
-- **Keep boxes ordered** follows the chosen order as tightly as possible.
-- **Minimize moves** prioritizes leaving Pokémon where they already are, but reserved intake boxes are still excluded as final Organizer destinations.
+- **Balanced** preserves section order along the selected direction while allowing a gap when it meaningfully reduces unnecessary moves.
+- **Keep boxes ordered** follows the chosen physical traversal as tightly as possible.
+- **Minimize moves** prioritizes leaving Pokémon where they already are. The selected direction becomes a preference rather than a strict packing rule, but reserved intake boxes are still excluded as final Organizer destinations.
 
-Worlddex normally places newly caught / received Pokémon into the first available PC space. The explicit **Reserve first boxes for catches** setting makes that landing zone predictable instead of coupling it to a reversed 32 → 1 layout.
+Worlddex normally places newly caught / received Pokémon into the first available PC space. **Reserve first boxes for catches** therefore remains independent from direction: Box 1–2 can stay as a predictable landing zone even while the organized collection fills from Box 32 downward.
 
-The physical-map preview marks intake boxes, planned destinations and unused boxes. The order editor only shows sections that actually exist in the current preview; its first item corresponds to the earliest organized physical box.
+The physical-map preview follows the selected direction and still marks intake boxes, planned destinations and unused boxes. **Edit box order** expands a compact wrapped editor inline beneath the persistent traversal summary (for example `Box 32 → Box 3`), so reordering does not cover the physical map and the first category is not confused with a generic physical “1”. The Organizer content area uses one continuous vertical scroll, so configuration, physical map, summary, preview table and log remain reachable without resizing the window.
+
+Large applies remain sequential and rate-limit aware. The scheduler updates its local occupancy after each successful move and performs a periodic live `/api/box` sanity refresh every 50 successful moves rather than every 10. This does **not** remove safety gates: apply still starts from a live PC validation, `BOX_FULL` forces an immediate server-truth refresh/replan step, HTTP 429 uses adaptive backoff, and the completed move batch is verified against a fresh live box read before box renames finish.
 
 ## Interface
 

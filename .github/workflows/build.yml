@@ -46,6 +46,9 @@ jobs:
           grep -Fq "doneMarketHardIVPct: 90" box-manager.js
           grep -Fq "protectFourPerfectIVsHard: true" box-manager.js
           grep -Fq "wd-organizer-reserve-first" box-manager.js
+          grep -Fq "wd-organizer-box-direction" box-manager.js
+          grep -Fq "wd-org-trained-criteria" box-manager.js
+          grep -Fq "wdorg-order-inline" box-manager.js
           grep -Fq "BREED_PLANNER_FORM_KEY" box-manager.js
           grep -Fq "BREED_PLANNER_LIVE_REFRESH_MS" box-manager.js
           grep -Fq "rollProbability" box-manager.js

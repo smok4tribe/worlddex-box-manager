@@ -4537,10 +4537,9 @@ No Pokémon will be moved or released.`)) return;
           layoutPriority: ['balanced','min_moves','ordered'].includes(raw.layoutPriority)
             ? raw.layoutPriority
             : (base.layoutPriority || 'balanced'),
-          // v1.19 physical order is intentionally unambiguous: category order
-          // maps from the earliest organized physical box upward. Intake space is
-          // controlled separately through reserveFirstBoxes.
-          boxDirection: 'ascending',
+          // Intake reserve and fill direction are independent. The first logical
+          // section maps to the selected physical start side after reserved boxes.
+          boxDirection: raw.boxDirection === 'descending' ? 'descending' : 'ascending',
           reserveFirstBoxes: Math.max(0, Math.min(99, Number(raw.reserveFirstBoxes ?? base.reserveFirstBoxes ?? 2) || 0)),
           boxCount: Math.max(1, Math.min(100, Number(raw.boxCount ?? 32) || 32)),
           capacity: Math.max(1, Math.min(99, Number(raw.capacity ?? 99) || 99)),
@@ -4573,6 +4572,7 @@ No Pokémon will be moved or released.`)) return;
           capacity:organizerPrefsState.capacity,
           autoOwnMin:organizerPrefsState.autoOwnMin,
           reserveFirstBoxes:organizerPrefsState.reserveFirstBoxes,
+          boxDirection:organizerPrefsState.boxDirection,
           categoryOrder:organizerPrefsState.categoryOrder,
           preset:name
         });
@@ -4789,11 +4789,11 @@ No Pokémon will be moved or released.`)) return;
       }
 
       function maxScoreIncreasingAssignment(scores) {
-        // Assign each logical box-group to a unique physical box while preserving
-        // logical order: group 0 < group 1 < group 2 ...
+        // Assign each logical box-group to a unique directional rank while
+        // preserving the player's section order. The directional rank can map
+        // either low → high or high → low in physical box numbers.
         //
-        // This is what the Category order UI actually promises. We still allow
-        // gaps between sections in Balanced mode so the planner can save moves.
+        // Balanced may still leave gaps between sections to save moves.
         const n=scores.length;
         const m=n ? scores[0].length : 0;
         if(!n) return [];
@@ -4856,7 +4856,8 @@ No Pokémon will be moved or released.`)) return;
         capacity = ORGANIZER_SAFE_CAPACITY,
         pinnedCounts = new Map(),
         layoutPriority = 'balanced',
-        reserveFirstBoxes = 2
+        reserveFirstBoxes = 2,
+        boxDirection = 'ascending'
       ) {
         if (!boxDefs.length) return {
           targets: [],
@@ -4866,7 +4867,11 @@ No Pokémon will be moved or released.`)) return;
         };
 
         const reserve = Math.max(0, Math.min(boxCount - 1, Math.floor(Number(reserveFirstBoxes) || 0)));
-        const eligibleBoxes = Array.from({length:Math.max(0,boxCount-reserve)},(_,i)=>reserve+i);
+        const direction = boxDirection === 'descending' ? 'descending' : 'ascending';
+        const physicalEligibleBoxes = Array.from({length:Math.max(0,boxCount-reserve)},(_,i)=>reserve+i);
+        const eligibleBoxes = direction === 'descending'
+          ? physicalEligibleBoxes.slice().reverse()
+          : physicalEligibleBoxes;
 
         if (boxDefs.length > eligibleBoxes.length) {
           throw new Error(
@@ -4878,8 +4883,8 @@ No Pokémon will be moved or released.`)) return;
           (window.Game && window.Game.state && window.Game.state.boxNames) || {};
 
         // v1.19 separates two ideas that used to be conflated by “Box direction”:
-        // category order always maps from the earliest organized physical box upward,
-        // while reserveFirstBoxes explicitly protects low PC boxes as intake space.
+        // category order follows the selected eligible-box traversal, while
+        // reserveFirstBoxes explicitly protects low PC boxes as intake space.
         const mode = ['balanced','min_moves','ordered'].includes(layoutPriority)
           ? layoutPriority
           : 'balanced';
@@ -4946,8 +4951,9 @@ No Pokémon will be moved or released.`)) return;
           const cost=scores.map(row=>row.map(score=>maxScore-score));
           localTargets=hungarianMin(cost);
         } else {
-          // Balanced and Ordered preserve logical section order. The first logical
-          // section therefore corresponds to the earliest non-reserved PC box.
+          // Balanced and Ordered preserve logical section order along the selected
+          // physical traversal. Rank 0 is Box reserve+1 in ascending mode and the
+          // highest PC box in descending mode.
           localTargets=maxScoreIncreasingAssignment(scores);
         }
         const targets=localTargets.map(index=>eligibleBoxes[index]);
@@ -4971,6 +4977,7 @@ No Pokémon will be moved or released.`)) return;
           stayed,
           total,
           strategy: mode,
+          boxDirection: direction,
           reserveFirstBoxes: reserve,
           eligibleBoxes
         };
@@ -5306,7 +5313,8 @@ No Pokémon will be moved or released.`)) return;
           capacity,
           pinnedCounts,
           prefs.layoutPriority,
-          reserveFirstBoxes
+          reserveFirstBoxes,
+          prefs.boxDirection
         );
 
         boxDefs.forEach((def,defIndex)=>{
@@ -5424,12 +5432,12 @@ No Pokémon will be moved or released.`)) return;
           renameEnabled:!!prefs.renameBoxes,
           renameChanges,
           layoutPriority:prefs.layoutPriority,
-          boxDirection:'ascending',
+          boxDirection:prefs.boxDirection,
           reserveFirstBoxes,
           intakeBoxes:Array.from({length:reserveFirstBoxes},(_,i)=>i),
           physicalDirection:prefs.layoutPriority === 'min_moves'
             ? 'move-optimized-with-intake-reserve'
-            : 'ascending-after-intake-reserve',
+            : `${prefs.boxDirection}-after-intake-reserve`,
           categoryOrder:[...sectionOrder],
           activeSections:[...activeSections],
           breedingOrganizationEnabled:!!prefs.keepBreedersTogether,
@@ -5492,7 +5500,10 @@ No Pokémon will be moved or released.`)) return;
       function renderOrganizerBoxRows(plan = organizerPlan) {
         const tbody = document.getElementById('wd-organizer-tbody');
         if (!tbody || !plan) return;
-        tbody.innerHTML = plan.boxSummaries.map(r => `
+        const previewRows = plan.boxDirection === 'descending'
+          ? [...plan.boxSummaries].sort((a,b)=>Number(b.Box)-Number(a.Box))
+          : plan.boxSummaries;
+        tbody.innerHTML = previewRows.map(r => `
           <tr>
             <td><b>${r.Box}</b></td>
             <td><b>${escHtml(r.Name)}</b></td>
@@ -5521,14 +5532,22 @@ No Pokémon will be moved or released.`)) return;
         if(physicalSummary){
           const r=Number(plan.reserveFirstBoxes||0);
           const intake=r===0 ? 'No dedicated intake reserve' : `Intake: Box 1${r>1?`–${r}`:''}`;
-          const organizedStart=Math.min(plan.boxCount,r+1);
-          physicalSummary.innerHTML=`<b>Physical layout:</b> ${escHtml(intake)} · Organized destinations: Box ${organizedStart} → ${plan.boxCount}`;
+          const organizedLow=Math.min(plan.boxCount,r+1);
+          const descending=plan.boxDirection==='descending';
+          const flowStart=descending ? plan.boxCount : organizedLow;
+          const flowEnd=descending ? organizedLow : plan.boxCount;
+          const optimizerNote=plan.layoutPriority==='min_moves'
+            ? ' · Minimize moves may reorder sections'
+            : '';
+          physicalSummary.innerHTML=`<b>Physical layout:</b> ${escHtml(intake)} · Organized direction: Box ${flowStart} → Box ${flowEnd}${escHtml(optimizerNote)}`;
         }
         const boxMap=document.getElementById('wd-organizer-boxmap');
         if(boxMap){
           const reserved=new Set(plan.intakeBoxes||[]);
           const summaryByBox=new Map((plan.boxSummaries||[]).map(row=>[Number(row.Box)-1,row]));
-          boxMap.innerHTML=Array.from({length:plan.boxCount},(_,b)=>{
+          const displayBoxes=Array.from({length:plan.boxCount},(_,b)=>b);
+          if(plan.boxDirection==='descending') displayBoxes.reverse();
+          boxMap.innerHTML=displayBoxes.map(b=>{
             const row=summaryByBox.get(b);
             const cls=reserved.has(b)?'wd-reserved':row?'wd-planned':'';
             const short=reserved.has(b)?'INTAKE':row?String(row.Name||'').slice(0,14):'FREE';
@@ -5624,7 +5643,11 @@ No Pokémon will be moved or released.`)) return;
 
       const ORGANIZER_REQUEST_GAP_MS = 500;
       const ORGANIZER_429_FALLBACK_MS = 65000;
-      const ORGANIZER_REFRESH_EVERY_MOVES = 10;
+      // Keep server-truth checks, but do not spend an extra /api/box request
+      // every 10 successful moves during large first-time reorganizations.
+      // BOX_FULL still forces an immediate refresh, and apply always performs
+      // both the initial live validation and final layout verification.
+      const ORGANIZER_REFRESH_EVERY_MOVES = 50;
       let organizerLastRequestAt = 0;
 
       function organizerRetryAfterMs(r, data) {
@@ -6357,7 +6380,7 @@ No Pokémon will be moved or released.`)) return;
           #wd-box-organizer-v14 button:disabled { opacity:.45; cursor:not-allowed; }
           #wd-box-organizer-v14 #wd-organizer-apply { background:#245a3a; border-color:#327d50; font-weight:700; }
           #wd-box-organizer-v14 #wd-organizer-apply:hover { background:#2d7148; }
-          #wd-box-organizer-v14 .wdorg-body { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; overflow:hidden; }
+          #wd-box-organizer-v14 .wdorg-body { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-gutter:stable; }
           #wd-box-organizer-v14 .wdorg-tools { display:flex; gap:8px; align-items:end; flex-wrap:wrap; padding:9px 12px; background:#121822; border-bottom:1px solid #2d3849; }
           #wd-box-organizer-v14 .wdorg-options { padding:10px 12px; border-bottom:1px solid #2d3849; background:#101620; }
           #wd-box-organizer-v14 .wdorg-options-top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
@@ -6380,6 +6403,17 @@ No Pokémon will be moved or released.`)) return;
           #wd-box-organizer-v14 .wdorg-checks { display:flex; gap:10px 16px; flex-wrap:wrap; align-items:center; }
           #wd-box-organizer-v14 .wdorg-checks label { display:flex; gap:6px; align-items:center; color:#c3cfde; }
           #wd-box-organizer-v14 .wdorg-checks .sub { color:#93a3b7; }
+          #wd-box-organizer-v14 .wdorg-battle-parent { color:#e8edf5; font-weight:650; }
+          #wd-box-organizer-v14 .wdorg-battle-criteria {
+            margin-left:18px;
+            padding:6px 8px 6px 10px;
+            border-left:2px solid #344154;
+            display:flex;
+            flex-direction:column;
+            gap:5px;
+          }
+          #wd-box-organizer-v14 .wdorg-battle-criteria > small { color:#7f90a5; }
+          #wd-box-organizer-v14 .wdorg-battle-criteria.wd-disabled { opacity:.45; }
           #wd-box-organizer-v14 .wdorg-checks input[type=number] { width:58px; background:#0b1017; border:1px solid #344154; color:#fff; border-radius:6px; padding:4px 6px; }
           #wd-box-organizer-v14 .wdorg-help { margin-top:7px; color:#8fa0b5; font-size:12px; }
           #wd-box-organizer-v14 .wdorg-orderbar {
@@ -6399,11 +6433,11 @@ No Pokémon will be moved or released.`)) return;
             flex:1 1 320px;
           }
           #wd-box-organizer-v14 .wdorg-order-editor {
-            margin-top:8px;
-            width:min(520px,100%);
-            padding:8px;
+            margin-top:6px;
+            width:100%;
+            padding:7px 8px;
             background:#0d131c;
-            border:1px solid #2d3849;
+            border:1px solid #2f3b4d;
             border-radius:9px;
           }
           #wd-box-organizer-v14 .wdorg-order-editor[hidden] {
@@ -6411,15 +6445,19 @@ No Pokémon will be moved or released.`)) return;
           }
           #wd-box-organizer-v14 .wdorg-order-list {
             display:flex;
-            flex-direction:column;
-            gap:5px;
+            flex-direction:row;
+            flex-wrap:wrap;
+            gap:6px;
           }
           #wd-box-organizer-v14 .wdorg-order-row {
             display:grid;
-            grid-template-columns:30px 22px minmax(150px,1fr) 34px 34px;
-            gap:5px;
+            grid-template-columns:20px minmax(110px,1fr) 28px 28px;
+            flex:1 1 210px;
+            max-width:320px;
+            min-width:200px;
+            gap:4px;
             align-items:center;
-            padding:6px 7px;
+            padding:5px 6px;
             background:#171f2b;
             border:1px solid #344154;
             border-radius:7px;
@@ -6431,14 +6469,10 @@ No Pokémon will be moved or released.`)) return;
             opacity:.45;
           }
           #wd-box-organizer-v14 .wdorg-order-row.wd-drop-before {
-            border-top-color:#73a9d2;
-            box-shadow:0 -2px 0 #73a9d2;
+            border-color:#73a9d2;
+            box-shadow:0 0 0 1px #73a9d2;
           }
-          #wd-box-organizer-v14 .wdorg-order-row .wdorg-order-num {
-            color:#7f90a5;
-            font-variant-numeric:tabular-nums;
-            text-align:right;
-          }
+
           #wd-box-organizer-v14 .wdorg-order-row .wdorg-drag {
             color:#6f8197;
             font-size:15px;
@@ -6452,8 +6486,8 @@ No Pokémon will be moved or released.`)) return;
             white-space:nowrap;
           }
           #wd-box-organizer-v14 .wdorg-order-row button {
-            padding:3px 5px;
-            min-width:30px;
+            padding:3px 4px;
+            min-width:26px;
             line-height:1.1;
             border-radius:5px;
           }
@@ -6488,7 +6522,7 @@ No Pokémon will be moved or released.`)) return;
 
           #wd-box-organizer-v14 .wdorg-field { display:flex; flex-direction:column; gap:3px; color:#9ba9bc; }
           #wd-box-organizer-v14 .wdorg-field input { width:100px; background:#0b1017; border:1px solid #344154; color:#fff; border-radius:7px; padding:7px 9px; }
-          #wd-box-organizer-v14 .wdorg-tablewrap { flex:1 1 auto; min-height:0; overflow-x:auto; overflow-y:scroll; scrollbar-gutter:stable; }
+          #wd-box-organizer-v14 .wdorg-tablewrap { flex:0 0 auto; min-height:0; overflow-x:auto; overflow-y:visible; }
           #wd-box-organizer-v14 table { width:100%; border-collapse:collapse; }
           #wd-box-organizer-v14 th { position:sticky; top:0; z-index:2; background:#19212d; color:#aeb9c8; text-align:left; padding:8px; border-bottom:1px solid #344154; white-space:nowrap; }
           #wd-box-organizer-v14 td { padding:8px; border-bottom:1px solid #252f3e; vertical-align:top; }
@@ -6558,9 +6592,12 @@ No Pokémon will be moved or released.`)) return;
                 <div class="wdorg-config-card">
                   <b>1 · What goes where</b>
                   <div class="wdorg-checks">
-                    <label><input id="wd-org-trained" type="checkbox"> Battle Ready together</label>
-                    <label class="sub"><input id="wd-org-trained-ev" type="checkbox"> Full EV training (508+)</label>
-                    <label class="sub"><input id="wd-org-trained-level" type="checkbox"> Level <input id="wd-org-level-min" type="number" min="1" max="100" value="100">+</label>
+                    <label class="wdorg-battle-parent"><input id="wd-org-trained" type="checkbox"> Battle Ready together</label>
+                    <div class="wdorg-battle-criteria" id="wd-org-trained-criteria">
+                      <small>Qualifies when all enabled criteria match:</small>
+                      <label class="sub"><input id="wd-org-trained-ev" type="checkbox"> Full EV training (508+)</label>
+                      <label class="sub"><input id="wd-org-trained-level" type="checkbox"> Level <input id="wd-org-level-min" type="number" min="1" max="100" value="100">+</label>
+                    </div>
                     <label><input id="wd-org-special" type="checkbox"> Rare / unbreedable together</label>
                     <label><input id="wd-org-dex" type="checkbox"> Pokédex tasks together</label>
                     <label><input id="wd-org-sync" type="checkbox"> Synchronize together</label>
@@ -6590,6 +6627,12 @@ No Pokémon will be moved or released.`)) return;
                     <label>Reserve first boxes for catches
                       <input id="wd-organizer-reserve-first" type="number" min="0" max="31" value="${Number(organizerPrefsState.reserveFirstBoxes||0)}">
                     </label>
+                    <label>Fill direction
+                      <select id="wd-organizer-box-direction">
+                        <option value="ascending">Low → High</option>
+                        <option value="descending">High → Low</option>
+                      </select>
+                    </label>
                     <label>Layout priority
                       <select id="wd-organizer-layout-priority">
                         <option value="balanced">Balanced</option>
@@ -6598,16 +6641,16 @@ No Pokémon will be moved or released.`)) return;
                       </select>
                     </label>
                   </div>
-                  <div class="wdorg-help">Physical order is always low → high after the reserved intake boxes. The first section in your custom order maps to the earliest organized box.</div>
+                  <div class="wdorg-help">The intake reserve stays at the low end. With 2 reserved boxes, Low → High fills Box 3 → 32; High → Low fills Box 32 → 3. Minimize moves treats this as a preference rather than a strict packing rule.</div>
                 </div>
               </div>
 
               <div class="wdorg-orderbar">
-                <button id="wd-organizer-order-toggle">Customize box order</button>
+                <button id="wd-organizer-order-toggle" aria-expanded="false">Edit box order ▾</button>
                 <span class="wdorg-order-summary" id="wd-organizer-order-summary"></span>
               </div>
 
-              <div class="wdorg-order-editor" id="wd-organizer-order-editor" hidden>
+              <div class="wdorg-order-editor wdorg-order-inline" id="wd-organizer-order-editor" hidden>
                 <div class="wdorg-order-list" id="wd-organizer-category-order"></div>
                 <div class="wdorg-order-actions">
                   <button id="wd-organizer-order-reset" title="Restore the default category order">Reset order</button>
@@ -6621,7 +6664,7 @@ No Pokémon will be moved or released.`)) return;
                   <b>Battle Ready:</b> enabled checks are cumulative. Recommended means Level 100 <b>and</b> 508+ total EVs.<br>
                   <b>Collection:</b> ordinary AUTO / DONE / NO BREED stock is pooled instead of getting surprise family boxes; OWN BOX remains explicit.<br>
                   <b>Intake reserve:</b> the first N physical boxes are not Organizer destinations, so normal catches / received Pokémon have somewhere predictable to land.<br>
-                  <b>Custom order:</b> first item = earliest organized physical box. Balanced/Ordered preserve that direction; Minimize moves may leave gaps but never uses reserved intake boxes as final destinations.<br>
+                  <b>Custom order:</b> the top item starts from the selected physical side — for example Box 32 in High → Low with a 2-box intake reserve. Balanced/Ordered preserve that traversal; Minimize moves may leave gaps or reorder sections but never uses reserved intake boxes as final destinations.<br>
                   <b>Cleanup Review:</b> cleanup candidates may be grouped for review, but Organizer never releases them.<br>
                   These settings only change placement. Cleaner protection is unchanged.
                 </div>
@@ -6695,6 +6738,8 @@ No Pokémon will be moved or released.`)) return;
             const el=document.getElementById(id);
             if(el) el.disabled=!p.keepTrainedTogether;
           });
+          const trainedCriteria=document.getElementById('wd-org-trained-criteria');
+          if(trainedCriteria) trainedCriteria.classList.toggle('wd-disabled',!p.keepTrainedTogether);
 
           const reserve=document.getElementById('wd-organizer-reserve-first');
           if(reserve) reserve.value=String(Math.max(0,Number(p.reserveFirstBoxes||0)));
@@ -6703,35 +6748,44 @@ No Pokémon will be moved or released.`)) return;
           if(preset) preset.value=p.preset||'custom';
           const layout=document.getElementById('wd-organizer-layout-priority');
           if(layout) layout.value=p.layoutPriority||'balanced';
+          const direction=document.getElementById('wd-organizer-box-direction');
+          if(direction) direction.value=p.boxDirection==='descending'?'descending':'ascending';
 
           const order=organizerVisibleSectionOrder(organizerPlan,p);
 
+          const labels=order.map(key=>ORGANIZER_SECTION_LABEL[key]||key);
+          const boxCount=Math.max(1,Number(organizerPlan?.boxCount || p.boxCount || initialBoxes));
+          const organizedLow=Math.min(boxCount,Math.max(1,Number(p.reserveFirstBoxes||0)+1));
+          const descending=p.boxDirection==='descending';
+          const startBox=descending ? boxCount : organizedLow;
+          const endBox=descending ? organizedLow : boxCount;
+          const physicalRange=`Box ${startBox} → Box ${endBox}`;
+
           const orderSummary=document.getElementById('wd-organizer-order-summary');
           if(orderSummary){
-            const labels=order.map(key=>ORGANIZER_SECTION_LABEL[key]||key);
             const shown=labels.slice(0,4).join(' → ');
-
-            orderSummary.textContent=labels.length
+            const sectionText=labels.length
               ? (labels.length>4 ? `${shown} → +${labels.length-4} more` : shown)
               : 'No active sections';
-
-            const firstBox=Math.max(1,Number(p.reserveFirstBoxes||0)+1);
+            orderSummary.textContent=`${physicalRange} · ${sectionText}`;
             orderSummary.title=p.layoutPriority==='min_moves'
-              ? `Preferred section order after reserved intake boxes (Minimize moves may leave gaps): ${labels.join(' → ')}`
-              : `Section order from physical Box ${firstBox} upward: ${labels.join(' → ')}`;
+              ? `Preferred physical section order ${physicalRange}; Minimize moves may reorder or leave gaps: ${labels.join(' → ')}`
+              : `Physical section order ${physicalRange}: ${labels.join(' → ')}`;
           }
+
 
           const orderWrap=document.getElementById('wd-organizer-category-order');
           if(orderWrap){
             orderWrap.innerHTML=order.length
               ? order.map((key,index)=>{
                   const label=ORGANIZER_SECTION_LABEL[key]||key;
+                  const earlier=`Move toward Box ${startBox} side`;
+                  const later=`Move toward Box ${endBox} side`;
                   return `<div class="wdorg-order-row" draggable="true" data-order-key="${escAttr(key)}">
-                    <span class="wdorg-order-num">${index+1}</span>
                     <span class="wdorg-drag" title="Drag to reorder">☰</span>
                     <b>${escHtml(label)}</b>
-                    <button data-order-move="-1" ${index===0?'disabled':''} title="Move earlier">↑</button>
-                    <button data-order-move="1" ${index===order.length-1?'disabled':''} title="Move later">↓</button>
+                    <button data-order-move="-1" ${index===0?'disabled':''} title="${escAttr(earlier)}">←</button>
+                    <button data-order-move="1" ${index===order.length-1?'disabled':''} title="${escAttr(later)}">→</button>
                   </div>`;
                 }).join('')
               : `<div style="color:#8292a7;padding:6px 3px">No active sections in this preview.</div>`;
@@ -6746,7 +6800,7 @@ No Pokémon will be moved or released.`)) return;
             keepFavouritesInPlace:checked('wd-org-favourites'), renameBoxes:checked('wd-org-rename'),
             layoutPriority:String(document.getElementById('wd-organizer-layout-priority')?.value || 'balanced'),
             reserveFirstBoxes:Number(document.getElementById('wd-organizer-reserve-first')?.value ?? organizerPrefsState.reserveFirstBoxes ?? 2),
-            boxDirection:'ascending',
+            boxDirection:String(document.getElementById('wd-organizer-box-direction')?.value || organizerPrefsState.boxDirection || 'ascending'),
             categoryOrder:organizerPrefsState.categoryOrder,
             preset:markCustom?'custom':organizerPrefsState.preset});
           saveOrganizerPrefs();
@@ -6827,6 +6881,7 @@ No Pokémon will be moved or released.`)) return;
         ['wd-org-trained','wd-org-trained-ev','wd-org-trained-level','wd-org-breeders','wd-org-sync','wd-org-dex','wd-org-special','wd-org-favourites','wd-org-rename'].forEach(id => bindOrganizer(id,'change',()=>readOrganizerPreferencesFromUI(true)));
         bindOrganizer('wd-org-level-min','change',()=>readOrganizerPreferencesFromUI(true));
         bindOrganizer('wd-organizer-layout-priority','change',()=>readOrganizerPreferencesFromUI(true));
+        bindOrganizer('wd-organizer-box-direction','change',()=>readOrganizerPreferencesFromUI(true));
 
         bindOrganizer('wd-organizer-order-toggle','click',()=>{
           const editor=document.getElementById('wd-organizer-order-editor');
@@ -6834,14 +6889,20 @@ No Pokémon will be moved or released.`)) return;
           if(!editor) return;
           const opening=editor.hidden;
           editor.hidden=!opening;
-          if(btn) btn.textContent=opening ? 'Hide box order' : 'Customize box order';
+          if(btn){
+            btn.textContent=opening ? 'Close box order ▴' : 'Edit box order ▾';
+            btn.setAttribute('aria-expanded',String(opening));
+          }
         });
 
         bindOrganizer('wd-organizer-order-done','click',()=>{
           const editor=document.getElementById('wd-organizer-order-editor');
           const btn=document.getElementById('wd-organizer-order-toggle');
           if(editor) editor.hidden=true;
-          if(btn) btn.textContent='Customize box order';
+          if(btn){
+            btn.textContent='Edit box order ▾';
+            btn.setAttribute('aria-expanded','false');
+          }
         });
 
         bindOrganizer('wd-organizer-category-order','click',e=>{
